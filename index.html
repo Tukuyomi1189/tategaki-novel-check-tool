@@ -125,6 +125,13 @@
     font-size: 0.5em;
     color: var(--accent);
   }
+  .v-line .bouten {
+    text-emphasis-style: filled dot;
+    text-emphasis-color: var(--accent);
+    text-emphasis-position: over right;
+    -webkit-text-emphasis-style: filled dot;
+    -webkit-text-emphasis-color: var(--accent);
+  }
   .tcy {
     text-combine-upright: all;
     -webkit-text-combine: horizontal;
@@ -211,6 +218,7 @@
     </label>
   </div>
   <p class="hint">ルビ: 「本気《マジ》」のように漢字の直後に《よみ》を付けるか、「｜任意の語句《よみ》」のように｜（全角縦棒）で始まりを指定できます（青空文庫形式）。</p>
+  <p class="hint">強調（傍点）: 「[[強調したい文字列]]」のように二重角括弧で囲むと、縦書きプレビューで文字の右側に傍点が付きます。</p>
 
   <div class="panes">
     <div class="pane">
@@ -250,7 +258,7 @@
 
   let lastColumns = [];
 
-  const SAMPLE = '彼は静かに振り返った。\n「本当に、来たのか……！？」\n「ああ、来たとも！！」\n「そんな……？？」\n「じゃあ、あと10分で来るのか……？！」\n窓の外では雨が降り続いていた。時刻は23時。\n｜久遠《くおん》の闇の奥で、彼は本気《マジ》になった。';
+  const SAMPLE = '彼は静かに振り返った。\n「本当に、来たのか……！？」\n「ああ、来たとも！！」\n「そんな……？？」\n「じゃあ、あと10分で来るのか……？！」\n窓の外では雨が降り続いていた。時刻は23時。\n｜久遠《くおん》の闇の奥で、彼は本気《マジ》になった。\n「[[来るまで]]車で待つか」とだけ、彼は言った。';
 
   function applyPunctuationRules(text) {
     return text
@@ -325,23 +333,26 @@
   }
 
   // ルビ記法（青空文庫形式）: ｜任意の語句《よみ》 または 直前の漢字連続《よみ》
-  const RUBY_RE = /｜([^｜《》]+)《([^《》]+)》|([\p{Script=Han}々〆〤〇]+)《([^《》]+)》/gu;
+  // 強調（傍点）記法: [[強調したい文字列]]
+  const TOKEN_RE = /｜([^｜《》]+)《([^《》]+)》|([\p{Script=Han}々〆〤〇]+)《([^《》]+)》|\[\[([^\[\]]+)\]\]/gu;
 
-  function tokenizeRuby(text) {
+  function tokenize(text) {
     const tokens = [];
     let lastIndex = 0;
     let m;
-    RUBY_RE.lastIndex = 0;
-    while ((m = RUBY_RE.exec(text)) !== null) {
+    TOKEN_RE.lastIndex = 0;
+    while ((m = TOKEN_RE.exec(text)) !== null) {
       if (m.index > lastIndex) {
         tokens.push({ type: 'plain', text: text.slice(lastIndex, m.index) });
       }
       if (m[1] !== undefined) {
         tokens.push({ type: 'ruby', base: m[1], reading: m[2] });
-      } else {
+      } else if (m[3] !== undefined) {
         tokens.push({ type: 'ruby', base: m[3], reading: m[4] });
+      } else {
+        tokens.push({ type: 'emphasis', text: m[5] });
       }
-      lastIndex = RUBY_RE.lastIndex;
+      lastIndex = TOKEN_RE.lastIndex;
     }
     if (lastIndex < text.length) {
       tokens.push({ type: 'plain', text: text.slice(lastIndex) });
@@ -349,13 +360,17 @@
     return tokens;
   }
 
-  // 段落を「1文字」または「ルビ1個（本文の文字数分）」の単位に分解する
+  // 段落を「1文字（傍点フラグ付き）」または「ルビ1個（本文の文字数分）」の単位に分解する
   function paragraphToUnits(paragraph) {
     const units = [];
-    for (const t of tokenizeRuby(paragraph)) {
+    for (const t of tokenize(paragraph)) {
       if (t.type === 'plain') {
         for (const ch of Array.from(t.text)) {
-          units.push({ kind: 'char', text: ch });
+          units.push({ kind: 'char', text: ch, emphasis: false });
+        }
+      } else if (t.type === 'emphasis') {
+        for (const ch of Array.from(t.text)) {
+          units.push({ kind: 'char', text: ch, emphasis: true });
         }
       } else {
         units.push({ kind: 'ruby', base: t.base, reading: t.reading, len: Array.from(t.base).length });
@@ -406,14 +421,18 @@
   function renderColumn(units) {
     let html = '';
     let buffer = '';
+    let bufferEmphasis = false;
     function flushBuffer() {
       if (buffer) {
-        html += highlightCombined(escapeHtml(buffer));
+        const inner = highlightCombined(escapeHtml(buffer));
+        html += bufferEmphasis ? '<span class="bouten">' + inner + '</span>' : inner;
         buffer = '';
       }
     }
     for (const u of units) {
       if (u.kind === 'char') {
+        if (buffer && u.emphasis !== bufferEmphasis) flushBuffer();
+        bufferEmphasis = u.emphasis;
         buffer += u.text;
       } else {
         flushBuffer();
@@ -424,9 +443,36 @@
     return html;
   }
 
-  // テキスト出力用: ルビは｜本文《よみ》の形式で書き戻す（各社の投稿サイト・青空文庫がそのまま解釈できる記法）
+  // テキスト出力用: ルビは｜本文《よみ》、傍点は青空文庫の注記形式で書き戻す
   function unitsToPlainText(units) {
-    return units.map(u => u.kind === 'char' ? u.text : '｜' + u.base + '《' + u.reading + '》').join('');
+    let text = '';
+    let buffer = '';
+    let bufferEmphasis = false;
+    function flushBuffer() {
+      if (buffer) {
+        text += bufferEmphasis ? buffer + '［＃「' + buffer + '」に傍点］' : buffer;
+        buffer = '';
+      }
+    }
+    for (const u of units) {
+      if (u.kind === 'char') {
+        if (buffer && u.emphasis !== bufferEmphasis) flushBuffer();
+        bufferEmphasis = u.emphasis;
+        buffer += u.text;
+      } else {
+        flushBuffer();
+        text += '｜' + u.base + '《' + u.reading + '》';
+      }
+    }
+    flushBuffer();
+    return text;
+  }
+
+  // コピー用テキスト向け: [[文字列]] を青空文庫の傍点注記に変換する
+  function convertEmphasisToAozora(text) {
+    return text.replace(/\[\[([^\[\]]+)\]\]/g, function (m, inner) {
+      return inner + '［＃「' + inner + '」に傍点］';
+    });
   }
 
   function downloadFile(filename, content, mimeType) {
@@ -450,6 +496,7 @@
       '.v-line:empty{min-width:1em;}',
       '.v-line ruby{ruby-position:over;}',
       '.v-line rt{font-size:0.5em;color:#8a4b3b;}',
+      '.v-line .bouten{text-emphasis-style:filled dot;text-emphasis-color:#8a4b3b;text-emphasis-position:over right;-webkit-text-emphasis-style:filled dot;-webkit-text-emphasis-color:#8a4b3b;}',
       '.tcy{text-combine-upright:all;-webkit-text-combine:horizontal;}'
     ].join('\n');
     return '<!DOCTYPE html>\n<html lang="ja">\n<head>\n<meta charset="UTF-8">\n<title>縦書きプレビュー</title>\n<style>\n' + css + '\n</style>\n</head>\n<body>\n<div class="vertical-preview">\n' + previewEl.innerHTML + '\n</div>\n</body>\n</html>\n';
@@ -470,8 +517,9 @@
     if (convertNumEl.checked) converted = convertNumbersToKanji(converted);
 
     // コピー用テキストは記号・数字変換のみ。改行を勝手に増やすと原稿が壊れるので入れない。
-    // ｜《》のルビ記法もそのまま残す（青空文庫形式やカクヨム・小説家になろう等がそのまま解釈できるため）。
-    outputEl.value = converted;
+    // ｜《》のルビ記法はそのまま残し（青空文庫形式やカクヨム・小説家になろう等がそのまま解釈できるため）、
+    // [[...]]の傍点記法は青空文庫の注記形式［＃「」に傍点］に変換する。
+    outputEl.value = convertEmphasisToAozora(converted);
 
     const paragraphs = converted.split('\n');
     const columns = [];
