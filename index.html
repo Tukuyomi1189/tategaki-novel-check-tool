@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>縦書き小説チェックツール</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #fafaf7;
+    --fg: #222;
+    --panel-bg: #ffffff;
+    --border: #ddd;
+    --accent: #8a4b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1e1e1e;
+      --fg: #eee;
+      --panel-bg: #2a2a2a;
+      --border: #444;
+      --accent: #e0987c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 1.5rem;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+  }
+  h1 {
+    font-size: 1.3rem;
+    margin: 0 0 1rem;
+  }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem 2rem;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding: 0.8rem 1rem;
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .controls label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.95rem;
+    cursor: pointer;
+  }
+  .controls input[type="number"] {
+    width: 5em;
+    padding: 0.3em;
+    font-size: 1rem;
+  }
+  .panes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+  .pane {
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.8rem;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .pane.full {
+    grid-column: 1 / -1;
+  }
+  .pane h2 {
+    font-size: 0.9rem;
+    margin: 0 0 0.5rem;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  textarea {
+    width: 100%;
+    min-height: 260px;
+    resize: vertical;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    padding: 0.6em;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: inherit;
+  }
+  .vertical-preview {
+    display: flex;
+    flex-direction: row-reverse;
+    align-items: flex-start;
+    gap: 0.3em;
+    overflow-x: auto;
+    overflow-y: hidden;
+    min-height: 320px;
+    max-height: 60vh;
+    padding: 0.8em;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+  }
+  .v-line {
+    writing-mode: vertical-rl;
+    white-space: pre;
+    font-size: 1.3rem;
+    line-height: 1.9;
+    font-family: "游明朝", "Yu Mincho", "Hiragino Mincho ProN", "MS PMincho", serif;
+    flex: none;
+  }
+  .v-line:empty {
+    min-width: 1em;
+  }
+  .v-line ruby {
+    ruby-position: over;
+  }
+  .v-line rt {
+    font-size: 0.5em;
+    color: var(--accent);
+  }
+  .tcy {
+    text-combine-upright: all;
+    -webkit-text-combine: horizontal;
+  }
+  .stats {
+    margin-top: 0.6rem;
+    font-size: 0.85rem;
+    opacity: 0.7;
+  }
+  .hint {
+    font-size: 0.82rem;
+    opacity: 0.7;
+    margin: -0.5rem 0 1rem;
+  }
+  .pane-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+  .pane-header h2 {
+    margin: 0;
+  }
+  .export-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .export-buttons button {
+    font-size: 0.82rem;
+    padding: 0.35em 0.7em;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--fg);
+    cursor: pointer;
+  }
+  .export-buttons button:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  @media (max-width: 800px) {
+    .panes { grid-template-columns: 1fr; }
+  }
+  @media print {
+    body * {
+      visibility: hidden;
+    }
+    #verticalPreview, #verticalPreview * {
+      visibility: visible;
+    }
+    #verticalPreview {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      max-height: none;
+      overflow: visible;
+      border: none;
+      padding: 0;
+    }
+    @page {
+      margin: 1.5cm;
+    }
+  }
+</style>
+</head>
+<body>
+  <h1>縦書き小説チェックツール</h1>
+
+  <div class="controls">
+    <label>1行の文字数
+      <input type="number" id="lineLength" value="20" min="1" max="200">
+    </label>
+    <label>
+      <input type="checkbox" id="convertPunctuation" checked>
+      感嘆符・疑問符を変換する（！！→!!　／　？？→⁇　／　！？→!?　／　？！→?!）
+    </label>
+    <label>
+      <input type="checkbox" id="convertNumbers" checked>
+      数字を漢数字に変換する（123→百二十三）
+    </label>
+  </div>
+  <p class="hint">ルビ: 「本気《マジ》」のように漢字の直後に《よみ》を付けるか、「｜任意の語句《よみ》」のように｜（全角縦棒）で始まりを指定できます（青空文庫形式）。</p>
+
+  <div class="panes">
+    <div class="pane">
+      <h2>入力（横書き）</h2>
+      <textarea id="inputText" spellcheck="false"></textarea>
+    </div>
+    <div class="pane">
+      <h2>コピー用テキスト（記号変換のみ・改行は元のまま）</h2>
+      <textarea id="outputText" readonly spellcheck="false"></textarea>
+    </div>
+    <div class="pane full">
+      <div class="pane-header">
+        <h2>縦書きプレビュー</h2>
+        <div class="export-buttons">
+          <button type="button" id="exportTxt">テキストとしてダウンロード</button>
+          <button type="button" id="exportHtml">HTMLとして保存</button>
+          <button type="button" id="exportPdf">PDFとして印刷</button>
+        </div>
+      </div>
+      <div id="verticalPreview" class="vertical-preview"></div>
+      <div class="stats" id="stats"></div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  const inputEl = document.getElementById('inputText');
+  const outputEl = document.getElementById('outputText');
+  const previewEl = document.getElementById('verticalPreview');
+  const lineLengthEl = document.getElementById('lineLength');
+  const convertEl = document.getElementById('convertPunctuation');
+  const convertNumEl = document.getElementById('convertNumbers');
+  const statsEl = document.getElementById('stats');
+  const exportTxtEl = document.getElementById('exportTxt');
+  const exportHtmlEl = document.getElementById('exportHtml');
+  const exportPdfEl = document.getElementById('exportPdf');
+
+  let lastColumns = [];
+
+  const SAMPLE = '彼は静かに振り返った。\n「本当に、来たのか……！？」\n「ああ、来たとも！！」\n「そんな……？？」\n「じゃあ、あと10分で来るのか……？！」\n窓の外では雨が降り続いていた。時刻は23時。\n｜久遠《くおん》の闇の奥で、彼は本気《マジ》になった。';
+
+  function applyPunctuationRules(text) {
+    return text
+      .replaceAll('！！', '!!')
+      .replaceAll('？？', '⁇')
+      .replaceAll('！？', '!?')
+      .replaceAll('？！', '?!');
+  }
+
+  // 位取り記数法の漢数字変換（0〜9999の4桁ブロック単位）
+  const KANJI_NUM = ['〇', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+  const SMALL_UNITS = ['', '十', '百', '千'];
+  const LARGE_UNITS = ['', '万', '億', '兆', '京', '垓'];
+
+  function convertUnder10000(n) {
+    if (n === 0) return '';
+    const s = String(n);
+    const len = s.length;
+    let result = '';
+    for (let i = 0; i < len; i++) {
+      const d = Number(s[i]);
+      const unitPos = len - i - 1;
+      if (d === 0) continue;
+      // 十/百/千の前の「一」は伝統的な表記に合わせて省略する（百二十三、であって一百二十三ではない）
+      result += (d === 1 && unitPos > 0) ? SMALL_UNITS[unitPos] : KANJI_NUM[d] + SMALL_UNITS[unitPos];
+    }
+    return result;
+  }
+
+  function integerToKanji(digits) {
+    digits = digits.replace(/^0+(?=\d)/, '');
+    if (digits === '0') return '〇';
+
+    const groups = [];
+    let s = digits;
+    while (s.length > 4) {
+      groups.unshift(s.slice(-4));
+      s = s.slice(0, -4);
+    }
+    groups.unshift(s);
+
+    let result = '';
+    const numGroups = groups.length;
+    for (let i = 0; i < numGroups; i++) {
+      const groupNum = parseInt(groups[i], 10);
+      if (groupNum === 0) continue;
+      const unitIdx = numGroups - i - 1;
+      result += convertUnder10000(groupNum) + (LARGE_UNITS[unitIdx] || '');
+    }
+    return result;
+  }
+
+  function toHalfWidthNumeric(s) {
+    return s
+      .replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+      .replace(/，/g, ',')
+      .replace(/．/g, '.');
+  }
+
+  const NUMBER_RE = /[0-9０-９]+(?:[,，][0-9０-９]{3})*(?:[.．][0-9０-９]+)?/g;
+
+  function convertNumbersToKanji(text) {
+    return text.replace(NUMBER_RE, function (match) {
+      const halfWidth = toHalfWidthNumeric(match).replace(/,/g, '');
+      const [intPart, decPart] = halfWidth.split('.');
+      let result = integerToKanji(intPart || '0');
+      if (decPart !== undefined) {
+        result += '点' + Array.from(decPart).map(d => KANJI_NUM[Number(d)]).join('');
+      }
+      return result;
+    });
+  }
+
+  // ルビ記法（青空文庫形式）: ｜任意の語句《よみ》 または 直前の漢字連続《よみ》
+  const RUBY_RE = /｜([^｜《》]+)《([^《》]+)》|([\p{Script=Han}々〆〤〇]+)《([^《》]+)》/gu;
+
+  function tokenizeRuby(text) {
+    const tokens = [];
+    let lastIndex = 0;
+    let m;
+    RUBY_RE.lastIndex = 0;
+    while ((m = RUBY_RE.exec(text)) !== null) {
+      if (m.index > lastIndex) {
+        tokens.push({ type: 'plain', text: text.slice(lastIndex, m.index) });
+      }
+      if (m[1] !== undefined) {
+        tokens.push({ type: 'ruby', base: m[1], reading: m[2] });
+      } else {
+        tokens.push({ type: 'ruby', base: m[3], reading: m[4] });
+      }
+      lastIndex = RUBY_RE.lastIndex;
+    }
+    if (lastIndex < text.length) {
+      tokens.push({ type: 'plain', text: text.slice(lastIndex) });
+    }
+    return tokens;
+  }
+
+  // 段落を「1文字」または「ルビ1個（本文の文字数分）」の単位に分解する
+  function paragraphToUnits(paragraph) {
+    const units = [];
+    for (const t of tokenizeRuby(paragraph)) {
+      if (t.type === 'plain') {
+        for (const ch of Array.from(t.text)) {
+          units.push({ kind: 'char', text: ch });
+        }
+      } else {
+        units.push({ kind: 'ruby', base: t.base, reading: t.reading, len: Array.from(t.base).length });
+      }
+    }
+    return units;
+  }
+
+  // n文字ごとに列分割する。ルビは本文の文字数で数え、列をまたいで分割しない。
+  function chunkUnits(units, n) {
+    if (units.length === 0) return [[]];
+    const columns = [];
+    let current = [];
+    let currentLen = 0;
+    for (const unit of units) {
+      const ulen = unit.kind === 'char' ? 1 : unit.len;
+      if (currentLen > 0 && currentLen + ulen > n) {
+        columns.push(current);
+        current = [];
+        currentLen = 0;
+      }
+      current.push(unit);
+      currentLen += ulen;
+      if (currentLen >= n) {
+        columns.push(current);
+        current = [];
+        currentLen = 0;
+      }
+    }
+    if (current.length > 0) columns.push(current);
+    return columns;
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // 「!!」「!?」「?!」は半角2文字を1マスに収める縦中横表示にする
+  function highlightCombined(escapedText) {
+    return escapedText
+      .replace(/!!/g, '<span class="tcy">!!</span>')
+      .replace(/!\?/g, '<span class="tcy">!?</span>')
+      .replace(/\?!/g, '<span class="tcy">?!</span>');
+  }
+
+  function renderColumn(units) {
+    let html = '';
+    let buffer = '';
+    function flushBuffer() {
+      if (buffer) {
+        html += highlightCombined(escapeHtml(buffer));
+        buffer = '';
+      }
+    }
+    for (const u of units) {
+      if (u.kind === 'char') {
+        buffer += u.text;
+      } else {
+        flushBuffer();
+        html += '<ruby>' + escapeHtml(u.base) + '<rt>' + escapeHtml(u.reading) + '</rt></ruby>';
+      }
+    }
+    flushBuffer();
+    return html;
+  }
+
+  // テキスト出力用: ルビは｜本文《よみ》の形式で書き戻す（各社の投稿サイト・青空文庫がそのまま解釈できる記法）
+  function unitsToPlainText(units) {
+    return units.map(u => u.kind === 'char' ? u.text : '｜' + u.base + '《' + u.reading + '》').join('');
+  }
+
+  function downloadFile(filename, content, mimeType) {
+    const blob = new Blob([content], { type: mimeType + ';charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function buildStandaloneHtml() {
+    const css = [
+      'body{margin:0;padding:2rem;background:#fafaf7;color:#222;font-family:"Hiragino Kaku Gothic ProN","Yu Gothic","Meiryo",sans-serif;}',
+      '@media (prefers-color-scheme: dark){body{background:#1e1e1e;color:#eee;}}',
+      '.vertical-preview{display:flex;flex-direction:row-reverse;align-items:flex-start;gap:0.3em;flex-wrap:wrap;}',
+      '.v-line{writing-mode:vertical-rl;white-space:pre;font-size:1.3rem;line-height:1.9;font-family:"游明朝","Yu Mincho","Hiragino Mincho ProN","MS PMincho",serif;flex:none;}',
+      '.v-line:empty{min-width:1em;}',
+      '.v-line ruby{ruby-position:over;}',
+      '.v-line rt{font-size:0.5em;color:#8a4b3b;}',
+      '.tcy{text-combine-upright:all;-webkit-text-combine:horizontal;}'
+    ].join('\n');
+    return '<!DOCTYPE html>\n<html lang="ja">\n<head>\n<meta charset="UTF-8">\n<title>縦書きプレビュー</title>\n<style>\n' + css + '\n</style>\n</head>\n<body>\n<div class="vertical-preview">\n' + previewEl.innerHTML + '\n</div>\n</body>\n</html>\n';
+  }
+
+  let debounceTimer = null;
+  function scheduleUpdate() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(update, 150);
+  }
+
+  function update() {
+    const raw = inputEl.value;
+    let n = parseInt(lineLengthEl.value, 10);
+    if (!Number.isFinite(n) || n < 1) n = 1;
+
+    let converted = convertEl.checked ? applyPunctuationRules(raw) : raw;
+    if (convertNumEl.checked) converted = convertNumbersToKanji(converted);
+
+    // コピー用テキストは記号・数字変換のみ。改行を勝手に増やすと原稿が壊れるので入れない。
+    // ｜《》のルビ記法もそのまま残す（青空文庫形式やカクヨム・小説家になろう等がそのまま解釈できるため）。
+    outputEl.value = converted;
+
+    const paragraphs = converted.split('\n');
+    const columns = [];
+    let totalChars = 0;
+    for (const para of paragraphs) {
+      const units = paragraphToUnits(para);
+      totalChars += units.reduce((sum, u) => sum + (u.kind === 'char' ? 1 : u.len), 0);
+      columns.push(...chunkUnits(units, n));
+    }
+
+    previewEl.innerHTML = columns
+      .map(col => '<div class="v-line">' + renderColumn(col) + '</div>')
+      .join('');
+
+    statsEl.textContent = '総文字数: ' + totalChars + '字　／　列数: ' + columns.length + '列（1列 ' + n + '字）';
+    lastColumns = columns;
+  }
+
+  inputEl.value = SAMPLE;
+  [inputEl, lineLengthEl, convertEl, convertNumEl].forEach(function (el) {
+    el.addEventListener('input', scheduleUpdate);
+  });
+
+  exportTxtEl.addEventListener('click', function () {
+    const text = lastColumns.map(unitsToPlainText).join('\n');
+    downloadFile('縦書きプレビュー.txt', text, 'text/plain');
+  });
+  exportHtmlEl.addEventListener('click', function () {
+    downloadFile('縦書きプレビュー.html', buildStandaloneHtml(), 'text/html');
+  });
+  exportPdfEl.addEventListener('click', function () {
+    window.print();
+  });
+
+  update();
+})();
+</script>
+</body>
+</html>
