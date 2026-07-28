@@ -179,23 +179,37 @@
     .panes { grid-template-columns: 1fr; }
   }
   @media print {
-    body * {
-      visibility: hidden;
+    h1, .controls, .hint, .pane-header, .stats,
+    .panes > .pane:not(.full) {
+      display: none !important;
     }
-    #verticalPreview, #verticalPreview * {
-      visibility: visible;
+    .pane.full {
+      border: none;
+      padding: 0;
+      margin: 0;
     }
     #verticalPreview {
-      position: absolute;
-      top: 0;
-      left: 0;
       width: 100%;
       max-height: none;
       overflow: visible;
       border: none;
       padding: 0;
+      display: block;
+    }
+    .print-page {
+      display: flex;
+      flex-direction: row-reverse;
+      align-items: flex-start;
+      gap: 0.3em;
+      break-after: page;
+      page-break-after: always;
+    }
+    .print-page:last-child {
+      break-after: auto;
+      page-break-after: auto;
     }
     @page {
+      size: A4;
       margin: 1.5cm;
     }
   }
@@ -215,6 +229,10 @@
     <label>
       <input type="checkbox" id="convertNumbers" checked>
       数字を漢数字に変換する（123→百二十三）
+    </label>
+    <label>
+      <input type="checkbox" id="convertHyphen" checked>
+      ハイフン(-)を長音記号(ー)に変換する
     </label>
   </div>
   <p class="hint">ルビ: 「本気《マジ》」のように漢字の直後に《よみ》を付けるか、「｜任意の語句《よみ》」のように｜（全角縦棒）で始まりを指定できます（青空文庫形式）。</p>
@@ -251,6 +269,7 @@
   const lineLengthEl = document.getElementById('lineLength');
   const convertEl = document.getElementById('convertPunctuation');
   const convertNumEl = document.getElementById('convertNumbers');
+  const convertHyphenEl = document.getElementById('convertHyphen');
   const statsEl = document.getElementById('stats');
   const exportTxtEl = document.getElementById('exportTxt');
   const exportHtmlEl = document.getElementById('exportHtml');
@@ -258,7 +277,7 @@
 
   let lastColumns = [];
 
-  const SAMPLE = '彼は静かに振り返った。\n「本当に、来たのか……！？」\n「ああ、来たとも！！」\n「そんな……？？」\n「じゃあ、あと10分で来るのか……？！」\n窓の外では雨が降り続いていた。時刻は23時。\n｜久遠《くおん》の闇の奥で、彼は本気《マジ》になった。\n「[[来るまで]]車で待つか」とだけ、彼は言った。';
+  const SAMPLE = '彼は静かに振り返った。\n「本当に、来たのか……！？」\n「ああ、来たとも！！」\n「そんな……？？」\n「じゃあ、あと10分で来るのか……？！」\n窓の外では雨が降り続いていた。時刻は23時。\n｜久遠《くおん》の闇の奥で、彼は本気《マジ》になった。\n「[[来るまで]]車で待つか」とだけ、彼は言った。\n「まだか-」と、廊下の奥から声がした。';
 
   function applyPunctuationRules(text) {
     return text
@@ -266,6 +285,11 @@
       .replaceAll('？？', '⁇')
       .replaceAll('！？', '!?')
       .replaceAll('？！', '?!');
+  }
+
+  // 半角ハイフンは縦書きで正しく回転せず横棒のまま表示されるため、長音記号に置き換える
+  function convertHyphenToChoonpu(text) {
+    return text.replaceAll('-', 'ー');
   }
 
   // 位取り記数法の漢数字変換（0〜9999の4桁ブロック単位）
@@ -515,6 +539,7 @@
 
     let converted = convertEl.checked ? applyPunctuationRules(raw) : raw;
     if (convertNumEl.checked) converted = convertNumbersToKanji(converted);
+    if (convertHyphenEl.checked) converted = convertHyphenToChoonpu(converted);
 
     // コピー用テキストは記号・数字変換のみ。改行を勝手に増やすと原稿が壊れるので入れない。
     // ｜《》のルビ記法はそのまま残し（青空文庫形式やカクヨム・小説家になろう等がそのまま解釈できるため）、
@@ -539,7 +564,7 @@
   }
 
   inputEl.value = SAMPLE;
-  [inputEl, lineLengthEl, convertEl, convertNumEl].forEach(function (el) {
+  [inputEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl].forEach(function (el) {
     el.addEventListener('input', scheduleUpdate);
   });
 
@@ -550,7 +575,58 @@
   exportHtmlEl.addEventListener('click', function () {
     downloadFile('縦書きプレビュー.html', buildStandaloneHtml(), 'text/html');
   });
+  // PDF印刷用: A4・余白1.5cmを想定した印刷可能幅(px)。実測値との誤差を考慮して少し狭めにしている。
+  const PRINT_PAGE_WIDTH_PX = 640;
+  let printPaginated = false;
+
+  // flexboxの横並びは印刷時にページ幅を超えた分が自動で次ページへ送られないため、
+  // 実際に描画された列幅を測ってページに収まる分だけをまとめ、ページ区切りのdivに詰め替える。
+  function preparePrintPages() {
+    const lines = Array.from(previewEl.children).filter(function (el) {
+      return el.classList.contains('v-line');
+    });
+    if (lines.length === 0) return;
+
+    const gapPx = parseFloat(getComputedStyle(previewEl).columnGap) || 0;
+    const pages = [];
+    let current = [];
+    let currentWidth = 0;
+    lines.forEach(function (el) {
+      const w = el.getBoundingClientRect().width;
+      const extra = current.length > 0 ? gapPx : 0;
+      if (current.length > 0 && currentWidth + extra + w > PRINT_PAGE_WIDTH_PX) {
+        pages.push(current);
+        current = [];
+        currentWidth = 0;
+      }
+      currentWidth += (current.length > 0 ? gapPx : 0) + w;
+      current.push(el);
+    });
+    if (current.length > 0) pages.push(current);
+
+    const frag = document.createDocumentFragment();
+    pages.forEach(function (pageLines) {
+      const pageDiv = document.createElement('div');
+      pageDiv.className = 'print-page';
+      pageLines.forEach(function (el) { pageDiv.appendChild(el); });
+      frag.appendChild(pageDiv);
+    });
+    previewEl.innerHTML = '';
+    previewEl.appendChild(frag);
+    printPaginated = true;
+  }
+
+  // 印刷後はページ区切り用のdivを取り除き、通常のプレビュー表示に戻す
+  function restorePrintPages() {
+    if (!printPaginated) return;
+    printPaginated = false;
+    update();
+  }
+
+  window.addEventListener('afterprint', restorePrintPages);
+
   exportPdfEl.addEventListener('click', function () {
+    preparePrintPages();
     window.print();
   });
 
