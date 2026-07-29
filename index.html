@@ -191,12 +191,28 @@
     border-color: var(--accent);
     color: var(--accent);
   }
+  #clipStudioPane {
+    display: none;
+  }
+  .radio-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    font-size: 0.85rem;
+  }
+  .radio-group label {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    cursor: pointer;
+    font-weight: normal;
+  }
   @media (max-width: 800px) {
     .panes { grid-template-columns: 1fr; }
   }
   @media print {
     h1, .controls, .hint, .pane-header, .stats,
-    .panes > .pane:not(.full) {
+    .panes > .pane:not(.full), #clipStudioPane {
       display: none !important;
     }
     .pane.full {
@@ -258,6 +274,10 @@
     <label>1段の列数
       <input type="number" id="columnsPerRow" min="1" placeholder="自動" disabled>
     </label>
+    <label>
+      <input type="checkbox" id="clipStudioEnabled">
+      クリップスタジオ形式でセリフを抽出する
+    </label>
   </div>
   <p class="hint">ルビ: 「本気《マジ》」のように漢字の直後に《よみ》を付けるか、「｜任意の語句《よみ》」のように｜（全角縦棒）で始まりを指定できます（青空文庫形式）。</p>
   <p class="hint">強調（傍点）: 「[[強調したい文字列]]」のように二重角括弧で囲むと、縦書きプレビューで文字の右側に傍点が付きます。</p>
@@ -271,6 +291,16 @@
     <div class="pane">
       <h2>コピー用テキスト（記号変換のみ・改行は元のまま）</h2>
       <textarea id="outputText" readonly spellcheck="false"></textarea>
+    </div>
+    <div class="pane full" id="clipStudioPane">
+      <div class="pane-header">
+        <h2>クリップスタジオ ストーリーエディター形式（セリフ抽出）</h2>
+        <div class="radio-group">
+          <label><input type="radio" name="clipStudioMode" value="vertical" checked> 縦書き（変換ルールを適用）</label>
+          <label><input type="radio" name="clipStudioMode" value="horizontal"> 横書き（そのまま）</label>
+        </div>
+      </div>
+      <textarea id="clipStudioOutput" readonly spellcheck="false"></textarea>
     </div>
     <div class="pane full">
       <div class="pane-header">
@@ -297,6 +327,10 @@
   const convertHyphenEl = document.getElementById('convertHyphen');
   const twoColumnModeEl = document.getElementById('twoColumnMode');
   const columnsPerRowEl = document.getElementById('columnsPerRow');
+  const clipStudioOutputEl = document.getElementById('clipStudioOutput');
+  const clipStudioModeRadios = document.querySelectorAll('input[name="clipStudioMode"]');
+  const clipStudioEnabledEl = document.getElementById('clipStudioEnabled');
+  const clipStudioPaneEl = document.getElementById('clipStudioPane');
   const statsEl = document.getElementById('stats');
   const exportTxtEl = document.getElementById('exportTxt');
   const exportHtmlEl = document.getElementById('exportHtml');
@@ -630,6 +664,20 @@
     debounceTimer = setTimeout(update, 150);
   }
 
+  // クリップスタジオ ストーリーエディター形式向けにセリフ行だけを抽出する。
+  // 対象: 行の先頭（前に何も無い状態）が「で始まる行のみ。空行は対象外。
+  function extractClipStudioDialogue(text) {
+    return text
+      .split('\n')
+      .filter(function (line) { return line.trim().length > 0 && line.startsWith('「'); })
+      .join('\n');
+  }
+
+  function updateClipStudioOutput(raw, verticalConverted) {
+    const isVertical = document.querySelector('input[name="clipStudioMode"]:checked').value === 'vertical';
+    clipStudioOutputEl.value = extractClipStudioDialogue(isVertical ? verticalConverted : raw);
+  }
+
   function update() {
     const raw = inputEl.value;
     let n = parseInt(lineLengthEl.value, 10);
@@ -642,7 +690,9 @@
     // コピー用テキストは記号・数字変換のみ。改行を勝手に増やすと原稿が壊れるので入れない。
     // ｜《》のルビ記法はそのまま残し（青空文庫形式やカクヨム・小説家になろう等がそのまま解釈できるため）、
     // [[...]]の傍点記法は青空文庫の注記形式［＃「」に傍点］に変換する。
-    outputEl.value = convertEmphasisToAozora(converted);
+    const finalConverted = convertEmphasisToAozora(converted);
+    outputEl.value = finalConverted;
+    updateClipStudioOutput(raw, finalConverted);
 
     const paragraphs = converted.split('\n');
     const columns = [];
@@ -668,8 +718,14 @@
   [inputEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl, twoColumnModeEl, columnsPerRowEl].forEach(function (el) {
     el.addEventListener('input', scheduleUpdate);
   });
+  clipStudioModeRadios.forEach(function (el) {
+    el.addEventListener('input', scheduleUpdate);
+  });
   twoColumnModeEl.addEventListener('input', function () {
     columnsPerRowEl.disabled = !twoColumnModeEl.checked;
+  });
+  clipStudioEnabledEl.addEventListener('input', function () {
+    clipStudioPaneEl.style.display = clipStudioEnabledEl.checked ? 'flex' : 'none';
   });
 
   exportTxtEl.addEventListener('click', function () {
