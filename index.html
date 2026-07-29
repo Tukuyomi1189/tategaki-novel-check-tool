@@ -93,6 +93,9 @@
     color: var(--fg);
     font-family: inherit;
   }
+  #clipStudioOutput {
+    line-height: 0.9;
+  }
   .vertical-preview {
     display: flex;
     flex-direction: row-reverse;
@@ -194,6 +197,64 @@
   #clipStudioPane {
     display: none;
   }
+  .clip-studio-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3em;
+    max-height: 240px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.4em;
+    margin-bottom: 0.6em;
+    background: var(--bg);
+  }
+  .clip-studio-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6em;
+    padding: 0.3em 0.5em;
+    border-bottom: 1px solid var(--border);
+  }
+  .clip-studio-item:last-child {
+    border-bottom: none;
+  }
+  .clip-studio-item-text {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.9rem;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .clip-studio-item-buttons {
+    display: flex;
+    gap: 0.2em;
+    flex: none;
+  }
+  .clip-studio-item-buttons button {
+    font-size: 0.75rem;
+    line-height: 1;
+    padding: 0.4em 0.55em;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--panel-bg);
+    color: var(--fg);
+    cursor: pointer;
+  }
+  .clip-studio-item-buttons button:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .clip-studio-item-buttons button:disabled {
+    opacity: 0.3;
+    cursor: default;
+  }
+  .clip-studio-empty {
+    margin: 0;
+    padding: 0.3em 0.5em;
+    font-size: 0.85rem;
+    opacity: 0.7;
+  }
   .radio-group {
     display: flex;
     flex-wrap: wrap;
@@ -289,7 +350,12 @@
       <textarea id="inputText" spellcheck="false"></textarea>
     </div>
     <div class="pane">
-      <h2>コピー用テキスト（記号変換のみ・改行は元のまま）</h2>
+      <div class="pane-header">
+        <h2>コピー用テキスト（記号変換のみ・改行は元のまま）</h2>
+        <div class="export-buttons">
+          <button type="button" id="outputCopy">クリップボードにコピー</button>
+        </div>
+      </div>
       <textarea id="outputText" readonly spellcheck="false"></textarea>
     </div>
     <div class="pane full" id="clipStudioPane">
@@ -299,7 +365,11 @@
           <label><input type="radio" name="clipStudioMode" value="vertical" checked> 縦書き（変換ルールを適用）</label>
           <label><input type="radio" name="clipStudioMode" value="horizontal"> 横書き（そのまま）</label>
         </div>
+        <div class="export-buttons">
+          <button type="button" id="clipStudioCopy">クリップボードにコピー</button>
+        </div>
       </div>
+      <div id="clipStudioList" class="clip-studio-list"></div>
       <textarea id="clipStudioOutput" readonly spellcheck="false"></textarea>
     </div>
     <div class="pane full">
@@ -320,6 +390,7 @@
 (function () {
   const inputEl = document.getElementById('inputText');
   const outputEl = document.getElementById('outputText');
+  const outputCopyEl = document.getElementById('outputCopy');
   const previewEl = document.getElementById('verticalPreview');
   const lineLengthEl = document.getElementById('lineLength');
   const convertEl = document.getElementById('convertPunctuation');
@@ -328,9 +399,11 @@
   const twoColumnModeEl = document.getElementById('twoColumnMode');
   const columnsPerRowEl = document.getElementById('columnsPerRow');
   const clipStudioOutputEl = document.getElementById('clipStudioOutput');
+  const clipStudioListEl = document.getElementById('clipStudioList');
   const clipStudioModeRadios = document.querySelectorAll('input[name="clipStudioMode"]');
   const clipStudioEnabledEl = document.getElementById('clipStudioEnabled');
   const clipStudioPaneEl = document.getElementById('clipStudioPane');
+  const clipStudioCopyEl = document.getElementById('clipStudioCopy');
   const statsEl = document.getElementById('stats');
   const exportTxtEl = document.getElementById('exportTxt');
   const exportHtmlEl = document.getElementById('exportHtml');
@@ -666,16 +739,88 @@
 
   // クリップスタジオ ストーリーエディター形式向けにセリフ行だけを抽出する。
   // 対象: 行の先頭（前に何も無い状態）が「で始まる行のみ。空行は対象外。
-  function extractClipStudioDialogue(text) {
+  // 行頭の「から、それに対応する」までの中身だけを取り出す（かぎかっこ自体は含めない）。
+  // 「」の後に地の文が続く場合（「まだか-」と、廊下の奥から声がした。 など）はそこを含めない。
+  // 傍点注記(［＃「」に傍点］)などで入れ子の「」が含まれる場合があるため、深さを数えて対応する」を探す。
+  function extractQuotedContent(line) {
+    const rest = line.slice(1);
+    let depth = 1;
+    for (let i = 0; i < rest.length; i++) {
+      const ch = rest[i];
+      if (ch === '「') {
+        depth++;
+      } else if (ch === '」') {
+        depth--;
+        if (depth === 0) {
+          return rest.slice(0, i);
+        }
+      }
+    }
+    return rest;
+  }
+
+  function extractClipStudioLines(text) {
     return text
       .split('\n')
       .filter(function (line) { return line.trim().length > 0 && line.startsWith('「'); })
-      .join('\n');
+      .map(extractQuotedContent);
   }
+
+  // 抽出結果の並び順（▲▼ボタンで並び替えた状態を保持する）
+  let clipStudioEntries = [];
+
+  // 原稿の再抽出時、既存の並び順をできるだけ維持する。
+  // 内容が変わらず残っている行はその順序のまま、新しく現れた行だけ末尾に追加する。
+  // （同一内容の行が複数ある場合や、文言自体が編集された行の並び順までは復元できません）
+  function reconcileClipStudioEntries(newEntries) {
+    const newSet = new Set(newEntries);
+    const preserved = clipStudioEntries.filter(function (e) { return newSet.has(e); });
+    const preservedSet = new Set(preserved);
+    const added = newEntries.filter(function (e) { return !preservedSet.has(e); });
+    return preserved.concat(added);
+  }
+
+  function renderClipStudioList() {
+    if (clipStudioEntries.length === 0) {
+      clipStudioListEl.innerHTML = '<p class="clip-studio-empty">対象のセリフが見つかりません。</p>';
+    } else {
+      clipStudioListEl.innerHTML = clipStudioEntries.map(function (entry, i) {
+        const isFirst = i === 0;
+        const isLast = i === clipStudioEntries.length - 1;
+        return '<div class="clip-studio-item">' +
+          '<span class="clip-studio-item-text">' + escapeHtml(entry) + '</span>' +
+          '<div class="clip-studio-item-buttons">' +
+            '<button type="button" class="cs-up" data-index="' + i + '"' + (isFirst ? ' disabled' : '') + ' aria-label="上へ移動">▲</button>' +
+            '<button type="button" class="cs-down" data-index="' + i + '"' + (isLast ? ' disabled' : '') + ' aria-label="下へ移動">▼</button>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+    }
+    clipStudioOutputEl.value = clipStudioEntries.join('\n\n');
+  }
+
+  clipStudioListEl.addEventListener('click', function (e) {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    const idx = parseInt(btn.dataset.index, 10);
+    let swapWith = -1;
+    if (btn.classList.contains('cs-up') && idx > 0) {
+      swapWith = idx - 1;
+    } else if (btn.classList.contains('cs-down') && idx < clipStudioEntries.length - 1) {
+      swapWith = idx + 1;
+    }
+    if (swapWith === -1) return;
+    const tmp = clipStudioEntries[idx];
+    clipStudioEntries[idx] = clipStudioEntries[swapWith];
+    clipStudioEntries[swapWith] = tmp;
+    renderClipStudioList();
+  });
 
   function updateClipStudioOutput(raw, verticalConverted) {
     const isVertical = document.querySelector('input[name="clipStudioMode"]:checked').value === 'vertical';
-    clipStudioOutputEl.value = extractClipStudioDialogue(isVertical ? verticalConverted : raw);
+    const newEntries = extractClipStudioLines(isVertical ? verticalConverted : raw);
+    clipStudioEntries = reconcileClipStudioEntries(newEntries);
+    renderClipStudioList();
   }
 
   function update() {
@@ -727,6 +872,39 @@
   clipStudioEnabledEl.addEventListener('input', function () {
     clipStudioPaneEl.style.display = clipStudioEnabledEl.checked ? 'flex' : 'none';
   });
+
+  // ボタンクリックでテキストをクリップボードへ一括コピーする。
+  // source がテキストエリアならその value を、関数ならその都度呼び出した戻り値をコピー対象にする
+  // （画面表示用のテキストと実際にコピーする内容を分けたい場合に関数を渡す）。
+  function setupCopyButton(buttonEl, source) {
+    buttonEl.addEventListener('click', function () {
+      const text = typeof source === 'function' ? source() : source.value;
+      function showCopied() {
+        const original = buttonEl.textContent;
+        buttonEl.textContent = 'コピーしました';
+        setTimeout(function () { buttonEl.textContent = original; }, 1500);
+      }
+      function fallbackCopy() {
+        const temp = document.createElement('textarea');
+        temp.value = text;
+        temp.style.position = 'fixed';
+        temp.style.opacity = '0';
+        document.body.appendChild(temp);
+        temp.select();
+        document.execCommand('copy');
+        document.body.removeChild(temp);
+        showCopied();
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(showCopied, fallbackCopy);
+      } else {
+        fallbackCopy();
+      }
+    });
+  }
+
+  setupCopyButton(clipStudioCopyEl, clipStudioOutputEl);
+  setupCopyButton(outputCopyEl, outputEl);
 
   exportTxtEl.addEventListener('click', function () {
     const text = lastColumns.map(unitsToPlainText).join('\n');
