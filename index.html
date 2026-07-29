@@ -98,10 +98,11 @@
     flex-direction: row-reverse;
     align-items: flex-start;
     gap: 0.3em;
-    overflow-x: auto;
-    overflow-y: hidden;
+    overflow: auto;
+    resize: vertical;
     min-height: 320px;
-    max-height: 60vh;
+    height: 60vh;
+    max-height: 90vh;
     padding: 0.8em;
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -117,6 +118,21 @@
   }
   .v-line:empty {
     min-width: 1em;
+  }
+  .page-row {
+    display: flex;
+    flex-direction: row-reverse;
+    align-items: flex-start;
+    gap: 0.3em;
+  }
+  .preview-page {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6em;
+    flex: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.6em;
   }
   .v-line ruby {
     ruby-position: over;
@@ -190,17 +206,18 @@
     }
     #verticalPreview {
       width: 100%;
+      height: auto;
       max-height: none;
       overflow: visible;
+      resize: none;
       border: none;
       padding: 0;
       display: block;
     }
     .print-page {
       display: flex;
-      flex-direction: row-reverse;
-      align-items: flex-start;
-      gap: 0.3em;
+      flex-direction: column;
+      gap: 0.6em;
       break-after: page;
       page-break-after: always;
     }
@@ -234,9 +251,17 @@
       <input type="checkbox" id="convertHyphen" checked>
       ハイフン(-)を長音記号(ー)に変換する
     </label>
+    <label>
+      <input type="checkbox" id="twoColumnMode">
+      2段組みで表示する
+    </label>
+    <label>1段の列数
+      <input type="number" id="columnsPerRow" min="1" placeholder="自動" disabled>
+    </label>
   </div>
   <p class="hint">ルビ: 「本気《マジ》」のように漢字の直後に《よみ》を付けるか、「｜任意の語句《よみ》」のように｜（全角縦棒）で始まりを指定できます（青空文庫形式）。</p>
   <p class="hint">強調（傍点）: 「[[強調したい文字列]]」のように二重角括弧で囲むと、縦書きプレビューで文字の右側に傍点が付きます。</p>
+  <p class="hint">2段組み: 列をA4用紙1ページ分の幅ごとに上下2段へ分けて、本のページのように表示・印刷します。「1段の列数」を指定すると、自動計算の代わりにその列数ごとに次の段へ進みます（空欄なら自動）。</p>
 
   <div class="panes">
     <div class="pane">
@@ -270,6 +295,8 @@
   const convertEl = document.getElementById('convertPunctuation');
   const convertNumEl = document.getElementById('convertNumbers');
   const convertHyphenEl = document.getElementById('convertHyphen');
+  const twoColumnModeEl = document.getElementById('twoColumnMode');
+  const columnsPerRowEl = document.getElementById('columnsPerRow');
   const statsEl = document.getElementById('stats');
   const exportTxtEl = document.getElementById('exportTxt');
   const exportHtmlEl = document.getElementById('exportHtml');
@@ -518,12 +545,83 @@
       '.vertical-preview{display:flex;flex-direction:row-reverse;align-items:flex-start;gap:0.3em;flex-wrap:wrap;}',
       '.v-line{writing-mode:vertical-rl;white-space:pre;font-size:1.3rem;line-height:1.9;font-family:"游明朝","Yu Mincho","Hiragino Mincho ProN","MS PMincho",serif;flex:none;}',
       '.v-line:empty{min-width:1em;}',
+      '.page-row{display:flex;flex-direction:row-reverse;align-items:flex-start;gap:0.3em;}',
+      '.preview-page{display:flex;flex-direction:column;gap:0.6em;flex:none;border:1px solid #ddd;border-radius:4px;padding:0.6em;}',
       '.v-line ruby{ruby-position:over;}',
       '.v-line rt{font-size:0.5em;color:#8a4b3b;}',
       '.v-line .bouten{text-emphasis-style:filled dot;text-emphasis-color:#8a4b3b;text-emphasis-position:over right;-webkit-text-emphasis-style:filled dot;-webkit-text-emphasis-color:#8a4b3b;}',
       '.tcy{text-combine-upright:all;-webkit-text-combine:horizontal;}'
     ].join('\n');
     return '<!DOCTYPE html>\n<html lang="ja">\n<head>\n<meta charset="UTF-8">\n<title>縦書きプレビュー</title>\n<style>\n' + css + '\n</style>\n</head>\n<body>\n<div class="vertical-preview">\n' + previewEl.innerHTML + '\n</div>\n</body>\n</html>\n';
+  }
+
+  // A4・余白1.5cmを想定した印刷可能幅(px)。画面の2段組み表示もこの幅を基準に合わせている。
+  const PAGE_WIDTH_PX = 640;
+
+  // 列(.v-line)を1行(段)ずつにまとめる。columnsPerRowが指定されていればその列数で機械的に区切り、
+  // 未指定なら実際に描画された列の幅を測ってpageWidthPxに収まる分だけを1行とする。
+  // まとめた行をrowsPerPage行ずつページにグループ化する。
+  function groupLinesIntoPages(lines, pageWidthPx, rowsPerPage, columnsPerRow) {
+    let rows;
+    if (columnsPerRow && columnsPerRow > 0) {
+      rows = [];
+      for (let i = 0; i < lines.length; i += columnsPerRow) {
+        rows.push(lines.slice(i, i + columnsPerRow));
+      }
+    } else {
+      const gapPx = parseFloat(getComputedStyle(previewEl).columnGap) || 0;
+      rows = [];
+      let current = [];
+      let currentWidth = 0;
+      lines.forEach(function (el) {
+        const w = el.getBoundingClientRect().width;
+        const extra = current.length > 0 ? gapPx : 0;
+        if (current.length > 0 && currentWidth + extra + w > pageWidthPx) {
+          rows.push(current);
+          current = [];
+          currentWidth = 0;
+        }
+        currentWidth += (current.length > 0 ? gapPx : 0) + w;
+        current.push(el);
+      });
+      if (current.length > 0) rows.push(current);
+    }
+
+    const pages = [];
+    for (let i = 0; i < rows.length; i += rowsPerPage) {
+      pages.push(rows.slice(i, i + rowsPerPage));
+    }
+    return pages;
+  }
+
+  function getColumnsPerRow() {
+    const v = parseInt(columnsPerRowEl.value, 10);
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  }
+
+  function wrapLinesIntoPageDom(pages, pageClassName) {
+    const frag = document.createDocumentFragment();
+    pages.forEach(function (rows) {
+      const pageDiv = document.createElement('div');
+      pageDiv.className = pageClassName;
+      rows.forEach(function (rowLines) {
+        const rowDiv = document.createElement('div');
+        rowDiv.className = 'page-row';
+        rowLines.forEach(function (el) { rowDiv.appendChild(el); });
+        pageDiv.appendChild(rowDiv);
+      });
+      frag.appendChild(pageDiv);
+    });
+    previewEl.innerHTML = '';
+    previewEl.appendChild(frag);
+  }
+
+  // 画面プレビューを2段組み（1ページ=上下2段の列）に組み直す
+  function applyTwoColumnLayout() {
+    const lines = Array.from(previewEl.querySelectorAll('.v-line'));
+    if (lines.length === 0) return;
+    const pages = groupLinesIntoPages(lines, PAGE_WIDTH_PX, 2, getColumnsPerRow());
+    wrapLinesIntoPageDom(pages, 'preview-page');
   }
 
   let debounceTimer = null;
@@ -558,14 +656,20 @@
     previewEl.innerHTML = columns
       .map(col => '<div class="v-line">' + renderColumn(col) + '</div>')
       .join('');
+    if (twoColumnModeEl.checked) {
+      applyTwoColumnLayout();
+    }
 
     statsEl.textContent = '総文字数: ' + totalChars + '字　／　列数: ' + columns.length + '列（1列 ' + n + '字）';
     lastColumns = columns;
   }
 
   inputEl.value = SAMPLE;
-  [inputEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl].forEach(function (el) {
+  [inputEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl, twoColumnModeEl, columnsPerRowEl].forEach(function (el) {
     el.addEventListener('input', scheduleUpdate);
+  });
+  twoColumnModeEl.addEventListener('input', function () {
+    columnsPerRowEl.disabled = !twoColumnModeEl.checked;
   });
 
   exportTxtEl.addEventListener('click', function () {
@@ -575,44 +679,17 @@
   exportHtmlEl.addEventListener('click', function () {
     downloadFile('縦書きプレビュー.html', buildStandaloneHtml(), 'text/html');
   });
-  // PDF印刷用: A4・余白1.5cmを想定した印刷可能幅(px)。実測値との誤差を考慮して少し狭めにしている。
-  const PRINT_PAGE_WIDTH_PX = 640;
   let printPaginated = false;
 
   // flexboxの横並びは印刷時にページ幅を超えた分が自動で次ページへ送られないため、
   // 実際に描画された列幅を測ってページに収まる分だけをまとめ、ページ区切りのdivに詰め替える。
+  // 画面が2段組み表示のときは印刷も2段組み（1ページ2段）にする。
   function preparePrintPages() {
-    const lines = Array.from(previewEl.children).filter(function (el) {
-      return el.classList.contains('v-line');
-    });
+    const lines = Array.from(previewEl.querySelectorAll('.v-line'));
     if (lines.length === 0) return;
-
-    const gapPx = parseFloat(getComputedStyle(previewEl).columnGap) || 0;
-    const pages = [];
-    let current = [];
-    let currentWidth = 0;
-    lines.forEach(function (el) {
-      const w = el.getBoundingClientRect().width;
-      const extra = current.length > 0 ? gapPx : 0;
-      if (current.length > 0 && currentWidth + extra + w > PRINT_PAGE_WIDTH_PX) {
-        pages.push(current);
-        current = [];
-        currentWidth = 0;
-      }
-      currentWidth += (current.length > 0 ? gapPx : 0) + w;
-      current.push(el);
-    });
-    if (current.length > 0) pages.push(current);
-
-    const frag = document.createDocumentFragment();
-    pages.forEach(function (pageLines) {
-      const pageDiv = document.createElement('div');
-      pageDiv.className = 'print-page';
-      pageLines.forEach(function (el) { pageDiv.appendChild(el); });
-      frag.appendChild(pageDiv);
-    });
-    previewEl.innerHTML = '';
-    previewEl.appendChild(frag);
+    const rowsPerPage = twoColumnModeEl.checked ? 2 : 1;
+    const pages = groupLinesIntoPages(lines, PAGE_WIDTH_PX, rowsPerPage, getColumnsPerRow());
+    wrapLinesIntoPageDom(pages, 'print-page');
     printPaginated = true;
   }
 
