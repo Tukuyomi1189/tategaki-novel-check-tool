@@ -2,9 +2,11 @@
 
 横書きで書いた小説のテキストを、縦書きでどう見えるかブラウザ上でプレビューできるツールです。サーバー不要、`index.html` を開くだけで使えます。
 
+**ブラウザからすぐ使う（ダウンロード不要）**: https://tukuyomi1189.github.io/tategaki-novel-check-tool/
+
 ## 使い方
 
-`index.html` をダブルクリックしてブラウザで開いてください（Chrome / Edge / Firefox / Safari 推奨）。
+上記のURLをブラウザで開くか、`index.html` をダウンロードしてダブルクリックで開いてください（Chrome / Edge / Firefox / Safari 推奨）。
 
 画面構成は次の3つです。
 
