@@ -343,10 +343,16 @@
   <p class="hint">ルビ: 「本気《マジ》」のように漢字の直後に《よみ》を付けるか、「｜任意の語句《よみ》」のように｜（全角縦棒）で始まりを指定できます（青空文庫形式）。</p>
   <p class="hint">強調（傍点）: 「[[強調したい文字列]]」のように二重角括弧で囲むと、縦書きプレビューで文字の右側に傍点が付きます。</p>
   <p class="hint">2段組み: 列をA4用紙1ページ分の幅ごとに上下2段へ分けて、本のページのように表示・印刷します。「1段の列数」を指定すると、自動計算の代わりにその列数ごとに次の段へ進みます（空欄なら自動）。</p>
+  <p class="hint">入力内容と各設定は、このブラウザ内（localStorage）に自動保存されます。ページを再読み込みしても消えません（他の端末やサーバーには送信されません）。</p>
 
   <div class="panes">
     <div class="pane">
-      <h2>入力（横書き）</h2>
+      <div class="pane-header">
+        <h2>入力（横書き）</h2>
+        <div class="export-buttons">
+          <button type="button" id="inputClear">一括削除</button>
+        </div>
+      </div>
       <textarea id="inputText" spellcheck="false"></textarea>
     </div>
     <div class="pane">
@@ -389,6 +395,7 @@
 <script>
 (function () {
   const inputEl = document.getElementById('inputText');
+  const inputClearEl = document.getElementById('inputClear');
   const outputEl = document.getElementById('outputText');
   const outputCopyEl = document.getElementById('outputCopy');
   const previewEl = document.getElementById('verticalPreview');
@@ -857,9 +864,78 @@
 
     statsEl.textContent = '総文字数: ' + totalChars + '字　／　列数: ' + columns.length + '列（1列 ' + n + '字）';
     lastColumns = columns;
+    persistSettings();
   }
 
-  inputEl.value = SAMPLE;
+  // 入力内容・各設定をブラウザのlocalStorageに保存し、再読み込み後も復元する。
+  // localStorageが使えない環境（プライベートモード等）ではエラーを握りつぶし、保存自体を諦める。
+  const STORAGE_PREFIX = 'tategakiTool.';
+
+  function saveToStorage(key, value) {
+    try {
+      localStorage.setItem(STORAGE_PREFIX + key, value);
+    } catch (e) {
+      // 保存できない場合は何もしない
+    }
+  }
+
+  function loadFromStorage(key) {
+    try {
+      return localStorage.getItem(STORAGE_PREFIX + key);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function persistSettings() {
+    saveToStorage('inputText', inputEl.value);
+    saveToStorage('lineLength', lineLengthEl.value);
+    saveToStorage('convertPunctuation', convertEl.checked ? '1' : '0');
+    saveToStorage('convertNumbers', convertNumEl.checked ? '1' : '0');
+    saveToStorage('convertHyphen', convertHyphenEl.checked ? '1' : '0');
+    saveToStorage('twoColumnMode', twoColumnModeEl.checked ? '1' : '0');
+    saveToStorage('columnsPerRow', columnsPerRowEl.value);
+    saveToStorage('clipStudioEnabled', clipStudioEnabledEl.checked ? '1' : '0');
+    const checkedRadio = document.querySelector('input[name="clipStudioMode"]:checked');
+    saveToStorage('clipStudioMode', checkedRadio ? checkedRadio.value : 'vertical');
+  }
+
+  function restoreSettings() {
+    const savedInput = loadFromStorage('inputText');
+    inputEl.value = savedInput !== null ? savedInput : SAMPLE;
+
+    const savedLineLength = loadFromStorage('lineLength');
+    if (savedLineLength !== null) lineLengthEl.value = savedLineLength;
+
+    const savedConvert = loadFromStorage('convertPunctuation');
+    if (savedConvert !== null) convertEl.checked = savedConvert === '1';
+
+    const savedNum = loadFromStorage('convertNumbers');
+    if (savedNum !== null) convertNumEl.checked = savedNum === '1';
+
+    const savedHyphen = loadFromStorage('convertHyphen');
+    if (savedHyphen !== null) convertHyphenEl.checked = savedHyphen === '1';
+
+    const savedTwoCol = loadFromStorage('twoColumnMode');
+    if (savedTwoCol !== null) twoColumnModeEl.checked = savedTwoCol === '1';
+    columnsPerRowEl.disabled = !twoColumnModeEl.checked;
+
+    const savedColsPerRow = loadFromStorage('columnsPerRow');
+    if (savedColsPerRow !== null) columnsPerRowEl.value = savedColsPerRow;
+
+    const savedClipEnabled = loadFromStorage('clipStudioEnabled');
+    if (savedClipEnabled !== null) {
+      clipStudioEnabledEl.checked = savedClipEnabled === '1';
+      clipStudioPaneEl.style.display = clipStudioEnabledEl.checked ? 'flex' : 'none';
+    }
+
+    const savedClipMode = loadFromStorage('clipStudioMode');
+    if (savedClipMode !== null) {
+      clipStudioModeRadios.forEach(function (el) { el.checked = el.value === savedClipMode; });
+    }
+  }
+
+  restoreSettings();
   [inputEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl, twoColumnModeEl, columnsPerRowEl].forEach(function (el) {
     el.addEventListener('input', scheduleUpdate);
   });
@@ -905,6 +981,15 @@
 
   setupCopyButton(clipStudioCopyEl, clipStudioOutputEl);
   setupCopyButton(outputCopyEl, outputEl);
+
+  // 誤操作防止のため、削除前に一度だけ確認ダイアログを挟む
+  inputClearEl.addEventListener('click', function () {
+    if (inputEl.value === '') return;
+    if (window.confirm('入力内容をすべて削除します。よろしいですか？')) {
+      inputEl.value = '';
+      update();
+    }
+  });
 
   exportTxtEl.addEventListener('click', function () {
     const text = lastColumns.map(unitsToPlainText).join('\n');
