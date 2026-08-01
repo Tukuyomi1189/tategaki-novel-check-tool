@@ -57,6 +57,19 @@
     padding: 0.3em;
     font-size: 1rem;
   }
+  .controls input.text-input {
+    width: 10em;
+    padding: 0.3em;
+    font-size: 1rem;
+  }
+  .controls select {
+    padding: 0.3em;
+    font-size: 0.95rem;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
   .panes {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -121,6 +134,16 @@
   }
   .v-line:empty {
     min-width: 1em;
+  }
+  .v-title {
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    margin-right: 0.3em;
+  }
+  .v-author {
+    font-size: 1rem;
+    margin-right: 0.6em;
   }
   .page-row {
     display: flex;
@@ -313,6 +336,22 @@
   <h1>縦書き小説チェックツール</h1>
 
   <div class="controls">
+    <label>タイトル
+      <input type="text" id="titleText" placeholder="（任意）" class="text-input">
+    </label>
+    <label>著者名
+      <input type="text" id="authorText" placeholder="（任意）" class="text-input">
+    </label>
+    <label>同人誌サイズ
+      <select id="pageSizePreset">
+        <option value="custom">カスタム</option>
+        <option value="bunko">文庫サイズ（A6）40字</option>
+        <option value="shinsho">新書サイズ 42字</option>
+        <option value="a5">A5判 44字</option>
+        <option value="b6">B6判 40字</option>
+        <option value="b5">B5判 48字</option>
+      </select>
+    </label>
     <label>1行の文字数
       <input type="number" id="lineLength" value="20" min="1" max="200">
     </label>
@@ -340,8 +379,11 @@
       クリップスタジオ形式でセリフを抽出する
     </label>
   </div>
+  <p class="hint">タイトル・著者名を入力すると、縦書きプレビューの一番右（先頭）に大きめの文字で表示されます（どちらも空欄なら表示されません）。テキスト・HTML出力や印刷にも反映されます。</p>
+  <p class="hint">同人誌サイズ: 選択すると「1行の文字数」を判型ごとの目安に自動設定します。フォントサイズや余白で最適な字数は変わるため、あくまで目安です。「1行の文字数」を直接編集すると自動的に「カスタム」に戻ります。</p>
   <p class="hint">ルビ: 「本気《マジ》」のように漢字の直後に《よみ》を付けるか、「｜任意の語句《よみ》」のように｜（全角縦棒）で始まりを指定できます（青空文庫形式）。</p>
-  <p class="hint">強調（傍点）: 「[[強調したい文字列]]」のように二重角括弧で囲むと、縦書きプレビューで文字の右側に傍点が付きます。</p>
+  <p class="hint">強調（傍点）: 「[[強調したい文字列]]」のように二重角括弧で囲むと、縦書きプレビューで文字の右側に傍点が付きます。日本語入力で全角になった「［［強調したい文字列］］」でも認識します。</p>
+  <p class="hint">濁点の強制付与: 「{{あ}}」のように二重波括弧で囲むと、「あ゙」のように本来濁点が付かない文字にも濁点を付けられます（叫び声などの表現用）。全角「｛｛｝｝」でも認識します。</p>
   <p class="hint">2段組み: 列をA4用紙1ページ分の幅ごとに上下2段へ分けて、本のページのように表示・印刷します。「1段の列数」を指定すると、自動計算の代わりにその列数ごとに次の段へ進みます（空欄なら自動）。</p>
   <p class="hint">入力内容と各設定は、このブラウザ内（localStorage）に自動保存されます。ページを再読み込みしても消えません（他の端末やサーバーには送信されません）。</p>
 
@@ -396,10 +438,13 @@
 (function () {
   const inputEl = document.getElementById('inputText');
   const inputClearEl = document.getElementById('inputClear');
+  const titleTextEl = document.getElementById('titleText');
+  const authorTextEl = document.getElementById('authorText');
   const outputEl = document.getElementById('outputText');
   const outputCopyEl = document.getElementById('outputCopy');
   const previewEl = document.getElementById('verticalPreview');
   const lineLengthEl = document.getElementById('lineLength');
+  const pageSizePresetEl = document.getElementById('pageSizePreset');
   const convertEl = document.getElementById('convertPunctuation');
   const convertNumEl = document.getElementById('convertNumbers');
   const convertHyphenEl = document.getElementById('convertHyphen');
@@ -419,6 +464,17 @@
   let lastColumns = [];
 
   const SAMPLE = '彼は静かに振り返った。\n「本当に、来たのか……！？」\n「ああ、来たとも！！」\n「そんな……？？」\n「じゃあ、あと10分で来るのか……？！」\n窓の外では雨が降り続いていた。時刻は23時。\n｜久遠《くおん》の闇の奥で、彼は本気《マジ》になった。\n「[[来るまで]]車で待つか」とだけ、彼は言った。\n「まだか-」と、廊下の奥から声がした。';
+  const SAMPLE_TITLE = '久遠の闇';
+  const SAMPLE_AUTHOR = '縦書太郎';
+
+  // 同人誌の一般的な判型に合わせた1行の文字数の目安（フォントサイズや余白により変わるため、あくまで目安）
+  const PAGE_SIZE_PRESETS = {
+    bunko: 40,
+    shinsho: 42,
+    a5: 44,
+    b6: 40,
+    b5: 48,
+  };
 
   function applyPunctuationRules(text) {
     return text
@@ -498,8 +554,9 @@
   }
 
   // ルビ記法（青空文庫形式）: ｜任意の語句《よみ》 または 直前の漢字連続《よみ》
-  // 強調（傍点）記法: [[強調したい文字列]]
-  const TOKEN_RE = /｜([^｜《》]+)《([^《》]+)》|([\p{Script=Han}々〆〤〇]+)《([^《》]+)》|\[\[([^\[\]]+)\]\]/gu;
+  // 強調（傍点）記法: [[強調したい文字列]]（日本語入力で全角［］になりやすいため全角・半角どちらも許容し、混在も可）
+  // 濁点強制付与記法: {{文字列}}（同様に全角｛｝・混在も許容）。「あ」など通常濁点が付かない文字にも濁点を付ける。
+  const TOKEN_RE = /｜([^｜《》]+)《([^《》]+)》|([\p{Script=Han}々〆〤〇]+)《([^《》]+)》|[\[［][\[［]([^\[\]［］]+)[\]］][\]］]|[\{｛][\{｛]([^\{\}｛｝]+)[\}｝][\}｝]/gu;
 
   function tokenize(text) {
     const tokens = [];
@@ -514,8 +571,10 @@
         tokens.push({ type: 'ruby', base: m[1], reading: m[2] });
       } else if (m[3] !== undefined) {
         tokens.push({ type: 'ruby', base: m[3], reading: m[4] });
-      } else {
+      } else if (m[5] !== undefined) {
         tokens.push({ type: 'emphasis', text: m[5] });
+      } else {
+        tokens.push({ type: 'dakuten', text: m[6] });
       }
       lastIndex = TOKEN_RE.lastIndex;
     }
@@ -536,6 +595,10 @@
       } else if (t.type === 'emphasis') {
         for (const ch of Array.from(t.text)) {
           units.push({ kind: 'char', text: ch, emphasis: true });
+        }
+      } else if (t.type === 'dakuten') {
+        for (const ch of Array.from(t.text)) {
+          units.push({ kind: 'char', text: ch + '゙', emphasis: false });
         }
       } else {
         units.push({ kind: 'ruby', base: t.base, reading: t.reading, len: Array.from(t.base).length });
@@ -635,8 +698,15 @@
 
   // コピー用テキスト向け: [[文字列]] を青空文庫の傍点注記に変換する
   function convertEmphasisToAozora(text) {
-    return text.replace(/\[\[([^\[\]]+)\]\]/g, function (m, inner) {
+    return text.replace(/[\[［][\[［]([^\[\]［］]+)[\]］][\]］]/g, function (m, inner) {
       return inner + '［＃「' + inner + '」に傍点］';
+    });
+  }
+
+  // コピー用テキスト向け: {{文字列}} の各文字に濁点(結合文字U+3099)を付けて書き戻す
+  function convertDakutenMarkup(text) {
+    return text.replace(/[\{｛][\{｛]([^\{\}｛｝]+)[\}｝][\}｝]/g, function (m, inner) {
+      return Array.from(inner).map(function (ch) { return ch + '゙'; }).join('');
     });
   }
 
@@ -659,6 +729,8 @@
       '.vertical-preview{display:flex;flex-direction:row-reverse;align-items:flex-start;gap:0.3em;flex-wrap:wrap;}',
       '.v-line{writing-mode:vertical-rl;white-space:pre;font-size:1.3rem;line-height:1.9;font-family:"游明朝","Yu Mincho","Hiragino Mincho ProN","MS PMincho",serif;flex:none;}',
       '.v-line:empty{min-width:1em;}',
+      '.v-title{font-size:2rem;font-weight:700;letter-spacing:0.2em;margin-right:0.3em;}',
+      '.v-author{font-size:1rem;margin-right:0.6em;}',
       '.page-row{display:flex;flex-direction:row-reverse;align-items:flex-start;gap:0.3em;}',
       '.preview-page{display:flex;flex-direction:column;gap:0.6em;flex:none;border:1px solid #ddd;border-radius:4px;padding:0.6em;}',
       '.v-line ruby{ruby-position:over;}',
@@ -830,19 +902,25 @@
     renderClipStudioList();
   }
 
+  // 感嘆符・数字・ハイフンの変換をまとめて適用する（本文・タイトル・著者名で共通利用）
+  function applyBasicConversions(text) {
+    let result = convertEl.checked ? applyPunctuationRules(text) : text;
+    if (convertNumEl.checked) result = convertNumbersToKanji(result);
+    if (convertHyphenEl.checked) result = convertHyphenToChoonpu(result);
+    return result;
+  }
+
   function update() {
     const raw = inputEl.value;
     let n = parseInt(lineLengthEl.value, 10);
     if (!Number.isFinite(n) || n < 1) n = 1;
 
-    let converted = convertEl.checked ? applyPunctuationRules(raw) : raw;
-    if (convertNumEl.checked) converted = convertNumbersToKanji(converted);
-    if (convertHyphenEl.checked) converted = convertHyphenToChoonpu(converted);
+    const converted = applyBasicConversions(raw);
 
     // コピー用テキストは記号・数字変換のみ。改行を勝手に増やすと原稿が壊れるので入れない。
     // ｜《》のルビ記法はそのまま残し（青空文庫形式やカクヨム・小説家になろう等がそのまま解釈できるため）、
-    // [[...]]の傍点記法は青空文庫の注記形式［＃「」に傍点］に変換する。
-    const finalConverted = convertEmphasisToAozora(converted);
+    // [[...]]の傍点記法は青空文庫の注記形式［＃「」に傍点］に変換し、{{...}}の濁点強制付与は実際に濁点を付けて書き戻す。
+    const finalConverted = convertDakutenMarkup(convertEmphasisToAozora(converted));
     outputEl.value = finalConverted;
     updateClipStudioOutput(raw, finalConverted);
 
@@ -855,7 +933,18 @@
       columns.push(...chunkUnits(units, n));
     }
 
-    previewEl.innerHTML = columns
+    // タイトル・著者名は任意入力。指定があれば本文の先頭（＝一番右）に大きめの文字で表示する。
+    let titleHtml = '';
+    const titleVal = applyBasicConversions(titleTextEl.value.trim());
+    const authorVal = applyBasicConversions(authorTextEl.value.trim());
+    if (titleVal) {
+      titleHtml += '<div class="v-line v-title">' + highlightCombined(escapeHtml(titleVal)) + '</div>';
+    }
+    if (authorVal) {
+      titleHtml += '<div class="v-line v-author">' + highlightCombined(escapeHtml(authorVal)) + '</div>';
+    }
+
+    previewEl.innerHTML = titleHtml + columns
       .map(col => '<div class="v-line">' + renderColumn(col) + '</div>')
       .join('');
     if (twoColumnModeEl.checked) {
@@ -889,7 +978,10 @@
 
   function persistSettings() {
     saveToStorage('inputText', inputEl.value);
+    saveToStorage('titleText', titleTextEl.value);
+    saveToStorage('authorText', authorTextEl.value);
     saveToStorage('lineLength', lineLengthEl.value);
+    saveToStorage('pageSizePreset', pageSizePresetEl.value);
     saveToStorage('convertPunctuation', convertEl.checked ? '1' : '0');
     saveToStorage('convertNumbers', convertNumEl.checked ? '1' : '0');
     saveToStorage('convertHyphen', convertHyphenEl.checked ? '1' : '0');
@@ -904,8 +996,19 @@
     const savedInput = loadFromStorage('inputText');
     inputEl.value = savedInput !== null ? savedInput : SAMPLE;
 
+    const savedTitle = loadFromStorage('titleText');
+    titleTextEl.value = savedTitle !== null ? savedTitle : SAMPLE_TITLE;
+
+    const savedAuthor = loadFromStorage('authorText');
+    authorTextEl.value = savedAuthor !== null ? savedAuthor : SAMPLE_AUTHOR;
+
     const savedLineLength = loadFromStorage('lineLength');
     if (savedLineLength !== null) lineLengthEl.value = savedLineLength;
+
+    const savedPreset = loadFromStorage('pageSizePreset');
+    if (savedPreset !== null && PAGE_SIZE_PRESETS[savedPreset] !== undefined) {
+      pageSizePresetEl.value = savedPreset;
+    }
 
     const savedConvert = loadFromStorage('convertPunctuation');
     if (savedConvert !== null) convertEl.checked = savedConvert === '1';
@@ -936,7 +1039,7 @@
   }
 
   restoreSettings();
-  [inputEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl, twoColumnModeEl, columnsPerRowEl].forEach(function (el) {
+  [inputEl, titleTextEl, authorTextEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl, twoColumnModeEl, columnsPerRowEl].forEach(function (el) {
     el.addEventListener('input', scheduleUpdate);
   });
   clipStudioModeRadios.forEach(function (el) {
@@ -944,6 +1047,20 @@
   });
   twoColumnModeEl.addEventListener('input', function () {
     columnsPerRowEl.disabled = !twoColumnModeEl.checked;
+  });
+  pageSizePresetEl.addEventListener('change', function () {
+    const preset = PAGE_SIZE_PRESETS[pageSizePresetEl.value];
+    if (preset !== undefined) {
+      lineLengthEl.value = preset;
+      scheduleUpdate();
+    }
+  });
+  // 1行の文字数をプリセットと違う値に手動で変更したら、選択を「カスタム」に戻す
+  lineLengthEl.addEventListener('input', function () {
+    const preset = PAGE_SIZE_PRESETS[pageSizePresetEl.value];
+    if (preset !== undefined && String(preset) !== lineLengthEl.value) {
+      pageSizePresetEl.value = 'custom';
+    }
   });
   clipStudioEnabledEl.addEventListener('input', function () {
     clipStudioPaneEl.style.display = clipStudioEnabledEl.checked ? 'flex' : 'none';
@@ -992,7 +1109,13 @@
   });
 
   exportTxtEl.addEventListener('click', function () {
-    const text = lastColumns.map(unitsToPlainText).join('\n');
+    const headerLines = [];
+    const titleVal = applyBasicConversions(titleTextEl.value.trim());
+    const authorVal = applyBasicConversions(authorTextEl.value.trim());
+    if (titleVal) headerLines.push(titleVal);
+    if (authorVal) headerLines.push(authorVal);
+    const bodyText = lastColumns.map(unitsToPlainText).join('\n');
+    const text = headerLines.length ? headerLines.join('\n') + '\n\n' + bodyText : bodyText;
     downloadFile('縦書きプレビュー.txt', text, 'text/plain');
   });
   exportHtmlEl.addEventListener('click', function () {
