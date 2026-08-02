@@ -151,6 +151,11 @@
     align-items: flex-start;
     gap: 0.3em;
   }
+  .preview-page .page-row:not(:last-child),
+  .print-page .page-row:not(:last-child) {
+    padding-bottom: 0.5em;
+    border-bottom: 1px dashed var(--accent);
+  }
   .preview-page {
     display: flex;
     flex-direction: column;
@@ -484,6 +489,13 @@
       .replaceAll('？！', '?!');
   }
 
+  // 異体字セレクター（U+FE00〜U+FE0F）は絵文字/テキスト表示を切り替えるだけの不可視の制御文字だが、
+  // 1文字としてカウントされてしまい縦書きの列に空白セルを生んだり、コピー先のフォントによっては
+  // 「‼」の直後に□（未対応グリフ）として表示されたりする原因になるため、変換前に取り除く。
+  function stripVariationSelectors(text) {
+    return text.replace(/[︀-️]/g, '');
+  }
+
   // 半角ハイフンは縦書きで正しく回転せず横棒のまま表示されるため、長音記号に置き換える
   function convertHyphenToChoonpu(text) {
     return text.replaceAll('-', 'ー');
@@ -733,6 +745,7 @@
       '.v-author{font-size:1rem;margin-right:0.6em;}',
       '.page-row{display:flex;flex-direction:row-reverse;align-items:flex-start;gap:0.3em;}',
       '.preview-page{display:flex;flex-direction:column;gap:0.6em;flex:none;border:1px solid #ddd;border-radius:4px;padding:0.6em;}',
+      '.preview-page .page-row:not(:last-child){padding-bottom:0.5em;border-bottom:1px dashed #8a4b3b;}',
       '.v-line ruby{ruby-position:over;}',
       '.v-line rt{font-size:0.5em;color:#8a4b3b;}',
       '.v-line .bouten{text-emphasis-style:filled dot;text-emphasis-color:#8a4b3b;text-emphasis-position:over right;-webkit-text-emphasis-style:filled dot;-webkit-text-emphasis-color:#8a4b3b;}',
@@ -802,12 +815,35 @@
     previewEl.appendChild(frag);
   }
 
+  // 内容量が少ないページ（最後のページなど）も含め、すべての.preview-pageを
+  // 一番大きいページに合わせた同じ幅・高さに揃える（本のページのように見た目を統一する）。
+  function equalizePageSizes() {
+    const pageEls = Array.from(previewEl.querySelectorAll('.preview-page'));
+    if (pageEls.length === 0) return;
+    pageEls.forEach(function (el) {
+      el.style.width = '';
+      el.style.height = '';
+    });
+    let maxWidth = 0;
+    let maxHeight = 0;
+    pageEls.forEach(function (el) {
+      const rect = el.getBoundingClientRect();
+      if (rect.width > maxWidth) maxWidth = rect.width;
+      if (rect.height > maxHeight) maxHeight = rect.height;
+    });
+    pageEls.forEach(function (el) {
+      el.style.width = maxWidth + 'px';
+      el.style.height = maxHeight + 'px';
+    });
+  }
+
   // 画面プレビューを2段組み（1ページ=上下2段の列）に組み直す
   function applyTwoColumnLayout() {
     const lines = Array.from(previewEl.querySelectorAll('.v-line'));
     if (lines.length === 0) return;
     const pages = groupLinesIntoPages(lines, PAGE_WIDTH_PX, 2, getColumnsPerRow());
     wrapLinesIntoPageDom(pages, 'preview-page');
+    equalizePageSizes();
   }
 
   let debounceTimer = null;
@@ -904,14 +940,15 @@
 
   // 感嘆符・数字・ハイフンの変換をまとめて適用する（本文・タイトル・著者名で共通利用）
   function applyBasicConversions(text) {
-    let result = convertEl.checked ? applyPunctuationRules(text) : text;
+    let result = stripVariationSelectors(text);
+    result = convertEl.checked ? applyPunctuationRules(result) : result;
     if (convertNumEl.checked) result = convertNumbersToKanji(result);
     if (convertHyphenEl.checked) result = convertHyphenToChoonpu(result);
     return result;
   }
 
   function update() {
-    const raw = inputEl.value;
+    const raw = stripVariationSelectors(inputEl.value);
     let n = parseInt(lineLengthEl.value, 10);
     if (!Number.isFinite(n) || n < 1) n = 1;
 
