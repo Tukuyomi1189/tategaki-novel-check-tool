@@ -183,6 +183,10 @@
     text-combine-upright: all;
     -webkit-text-combine: horizontal;
   }
+  /* 半角アルファベットの連続（BBQなど）を横倒しの連結表示にせず、1文字ずつ縦にまっすぐ並べる */
+  .latin-upright {
+    text-orientation: upright;
+  }
   .stats {
     margin-top: 0.6rem;
     font-size: 0.85rem;
@@ -360,6 +364,12 @@
     <label>1行の文字数
       <input type="number" id="lineLength" value="20" min="1" max="200">
     </label>
+    <label>ルビの出力形式
+      <select id="rubyFormat">
+        <option value="aozora">青空文庫形式（｜語句《よみ》）</option>
+        <option value="pixiv">pixiv形式（[[rb:語句&gt;よみ]]）</option>
+      </select>
+    </label>
     <label>
       <input type="checkbox" id="convertPunctuation" checked>
       感嘆符・疑問符を変換する（！！→!!　／　？？→⁇　／　！？→!?　／　？！→?!）
@@ -386,7 +396,7 @@
   </div>
   <p class="hint">タイトル・著者名を入力すると、縦書きプレビューの一番右（先頭）に大きめの文字で表示されます（どちらも空欄なら表示されません）。テキスト・HTML出力や印刷にも反映されます。</p>
   <p class="hint">同人誌サイズ: 選択すると「1行の文字数」を判型ごとの目安に自動設定します。フォントサイズや余白で最適な字数は変わるため、あくまで目安です。「1行の文字数」を直接編集すると自動的に「カスタム」に戻ります。</p>
-  <p class="hint">ルビ: 「本気《マジ》」のように漢字の直後に《よみ》を付けるか、「｜任意の語句《よみ》」のように｜（全角縦棒）で始まりを指定できます（青空文庫形式）。</p>
+  <p class="hint">ルビ: 「本気《マジ》」のように漢字の直後に《よみ》を付けるか、「｜任意の語句《よみ》」のように｜（全角縦棒）で始まりを指定できます（青空文庫形式）。「[[rb:語句&gt;よみ]]」（pixiv形式）も入力として認識します。「ルビの出力形式」で選んだ形式に、コピー用テキスト・テキストダウンロードのルビ表記がすべて揃えられます。</p>
   <p class="hint">強調（傍点）: 「[[強調したい文字列]]」のように二重角括弧で囲むと、縦書きプレビューで文字の右側に傍点が付きます。日本語入力で全角になった「［［強調したい文字列］］」でも認識します。</p>
   <p class="hint">濁点の強制付与: 「{{あ}}」のように二重波括弧で囲むと、「あ゙」のように本来濁点が付かない文字にも濁点を付けられます（叫び声などの表現用）。全角「｛｛｝｝」でも認識します。</p>
   <p class="hint">2段組み: 列をA4用紙1ページ分の幅ごとに上下2段へ分けて、本のページのように表示・印刷します。「1段の列数」を指定すると、自動計算の代わりにその列数ごとに次の段へ進みます（空欄なら自動）。</p>
@@ -450,6 +460,7 @@
   const previewEl = document.getElementById('verticalPreview');
   const lineLengthEl = document.getElementById('lineLength');
   const pageSizePresetEl = document.getElementById('pageSizePreset');
+  const rubyFormatEl = document.getElementById('rubyFormat');
   const convertEl = document.getElementById('convertPunctuation');
   const convertNumEl = document.getElementById('convertNumbers');
   const convertHyphenEl = document.getElementById('convertHyphen');
@@ -499,6 +510,14 @@
   // 半角ハイフンは縦書きで正しく回転せず横棒のまま表示されるため、長音記号に置き換える
   function convertHyphenToChoonpu(text) {
     return text.replaceAll('-', 'ー');
+  }
+
+  // 波ダッシュ（〜 U+301C）は、Windowsの一部の明朝体フォント（游明朝・MS明朝など）で
+  // 正しいグリフを持たず「?」として表示されてしまうことがある「波ダッシュ問題」と呼ばれる既知の不具合があるため、
+  // より広く正しく表示される全角チルダ（～ U+FF5E。Windowsで波ダッシュを入力すると通常こちらになる）に統一する。
+  // 半角チルダ「~」も縦書きで正しく回転しないため、同様に全角チルダへ変換する。
+  function normalizeWaveDash(text) {
+    return text.replace(/[〜~]/g, '～');
   }
 
   // 位取り記数法の漢数字変換（0〜9999の4桁ブロック単位）
@@ -566,9 +585,10 @@
   }
 
   // ルビ記法（青空文庫形式）: ｜任意の語句《よみ》 または 直前の漢字連続《よみ》
+  // ルビ記法（pixiv小説形式）: [[rb:語句>よみ]]（全角［］・全角コロン／矢印との混在も許容）
   // 強調（傍点）記法: [[強調したい文字列]]（日本語入力で全角［］になりやすいため全角・半角どちらも許容し、混在も可）
   // 濁点強制付与記法: {{文字列}}（同様に全角｛｝・混在も許容）。「あ」など通常濁点が付かない文字にも濁点を付ける。
-  const TOKEN_RE = /｜([^｜《》]+)《([^《》]+)》|([\p{Script=Han}々〆〤〇]+)《([^《》]+)》|[\[［][\[［]([^\[\]［］]+)[\]］][\]］]|[\{｛][\{｛]([^\{\}｛｝]+)[\}｝][\}｝]/gu;
+  const TOKEN_RE = /｜([^｜《》]+)《([^《》]+)》|([\p{Script=Han}々〆〤〇]+)《([^《》]+)》|[\[［][\[［]\s*[rR][bB]\s*[:：]\s*([^\]］>＞]+?)\s*[>＞]\s*([^\]］]+?)\s*[\]］][\]］]|[\[［][\[［]([^\[\]［］]+)[\]］][\]］]|[\{｛][\{｛]([^\{\}｛｝]+)[\}｝][\}｝]/gu;
 
   function tokenize(text) {
     const tokens = [];
@@ -584,9 +604,11 @@
       } else if (m[3] !== undefined) {
         tokens.push({ type: 'ruby', base: m[3], reading: m[4] });
       } else if (m[5] !== undefined) {
-        tokens.push({ type: 'emphasis', text: m[5] });
+        tokens.push({ type: 'ruby', base: m[5], reading: m[6] });
+      } else if (m[7] !== undefined) {
+        tokens.push({ type: 'emphasis', text: m[7] });
       } else {
-        tokens.push({ type: 'dakuten', text: m[6] });
+        tokens.push({ type: 'dakuten', text: m[8] });
       }
       lastIndex = TOKEN_RE.lastIndex;
     }
@@ -658,13 +680,35 @@
       .replace(/\?!/g, '<span class="tcy">?!</span>');
   }
 
+  // 半角アルファベットの連続（BBQなど）を検出し、1文字ずつ縦にまっすぐ並ぶよう個別にラップする。
+  // エスケープ後の文字列に対して正規表現をかけると &amp; などの実体参照の中の文字（amp等）を誤って
+  // 拾ってしまうため、エスケープ前の生テキストの段階でLatin runを検出してから個別にエスケープする。
+  const LATIN_RUN_RE = /[A-Za-z]+/g;
+  function renderInlineText(rawText) {
+    let html = '';
+    let lastIndex = 0;
+    let m;
+    LATIN_RUN_RE.lastIndex = 0;
+    while ((m = LATIN_RUN_RE.exec(rawText)) !== null) {
+      if (m.index > lastIndex) {
+        html += highlightCombined(escapeHtml(rawText.slice(lastIndex, m.index)));
+      }
+      html += '<span class="latin-upright">' + escapeHtml(m[0]) + '</span>';
+      lastIndex = LATIN_RUN_RE.lastIndex;
+    }
+    if (lastIndex < rawText.length) {
+      html += highlightCombined(escapeHtml(rawText.slice(lastIndex)));
+    }
+    return html;
+  }
+
   function renderColumn(units) {
     let html = '';
     let buffer = '';
     let bufferEmphasis = false;
     function flushBuffer() {
       if (buffer) {
-        const inner = highlightCombined(escapeHtml(buffer));
+        const inner = renderInlineText(buffer);
         html += bufferEmphasis ? '<span class="bouten">' + inner + '</span>' : inner;
         buffer = '';
       }
@@ -683,8 +727,9 @@
     return html;
   }
 
-  // テキスト出力用: ルビは｜本文《よみ》、傍点は青空文庫の注記形式で書き戻す
-  function unitsToPlainText(units) {
+  // テキスト出力用: ルビは指定形式（既定は青空文庫形式｜本文《よみ》、pixiv形式なら[[rb:本文>よみ]]）、
+  // 傍点は青空文庫の注記形式で書き戻す
+  function unitsToPlainText(units, rubyFormat) {
     let text = '';
     let buffer = '';
     let bufferEmphasis = false;
@@ -701,16 +746,37 @@
         buffer += u.text;
       } else {
         flushBuffer();
-        text += '｜' + u.base + '《' + u.reading + '》';
+        text += rubyFormat === 'pixiv' ? '[[rb:' + u.base + '>' + u.reading + ']]' : '｜' + u.base + '《' + u.reading + '》';
       }
     }
     flushBuffer();
     return text;
   }
 
+  // コピー用テキスト向け: [[rb:語句>よみ]]（pixiv小説形式）を青空文庫形式 ｜語句《よみ》 に変換する
+  // （pixivの記法はpixiv以外では解釈されないため、カクヨム・小説家になろう等でも使える形に正規化する）
+  function convertPixivRubyToAozora(text) {
+    return text.replace(/[\[［][\[［]\s*[rR][bB]\s*[:：]\s*([^\]］>＞]+?)\s*[>＞]\s*([^\]］]+?)\s*[\]］][\]］]/g, function (m, base, reading) {
+      return '｜' + base + '《' + reading + '》';
+    });
+  }
+
+  // コピー用テキスト向け: 青空文庫形式のルビ（｜語句《よみ》／漢字《よみ》）をpixiv形式 [[rb:語句>よみ]] に変換する
+  // （「ルビの出力形式」でpixiv形式が選ばれたときに使う。既にpixiv形式で書かれたルビはこの正規表現にマッチしないのでそのまま残る）
+  function convertAozoraRubyToPixiv(text) {
+    return text
+      .replace(/｜([^｜《》]+)《([^《》]+)》/g, function (m, base, reading) {
+        return '[[rb:' + base + '>' + reading + ']]';
+      })
+      .replace(/([\p{Script=Han}々〆〤〇]+)《([^《》]+)》/gu, function (m, base, reading) {
+        return '[[rb:' + base + '>' + reading + ']]';
+      });
+  }
+
   // コピー用テキスト向け: [[文字列]] を青空文庫の傍点注記に変換する
+  // （[[rb:語句>よみ]]形式のルビ記法は、ルビ変換のあとに残っていても傍点と誤認しないよう除外する）
   function convertEmphasisToAozora(text) {
-    return text.replace(/[\[［][\[［]([^\[\]［］]+)[\]］][\]］]/g, function (m, inner) {
+    return text.replace(/[\[［][\[［](?!\s*[rR][bB]\s*[:：])([^\[\]［］]+)[\]］][\]］]/g, function (m, inner) {
       return inner + '［＃「' + inner + '」に傍点］';
     });
   }
@@ -749,7 +815,8 @@
       '.v-line ruby{ruby-position:over;}',
       '.v-line rt{font-size:0.5em;color:#8a4b3b;}',
       '.v-line .bouten{text-emphasis-style:filled dot;text-emphasis-color:#8a4b3b;text-emphasis-position:over right;-webkit-text-emphasis-style:filled dot;-webkit-text-emphasis-color:#8a4b3b;}',
-      '.tcy{text-combine-upright:all;-webkit-text-combine:horizontal;}'
+      '.tcy{text-combine-upright:all;-webkit-text-combine:horizontal;}',
+      '.latin-upright{text-orientation:upright;}'
     ].join('\n');
     return '<!DOCTYPE html>\n<html lang="ja">\n<head>\n<meta charset="UTF-8">\n<title>縦書きプレビュー</title>\n<style>\n' + css + '\n</style>\n</head>\n<body>\n<div class="vertical-preview">\n' + previewEl.innerHTML + '\n</div>\n</body>\n</html>\n';
   }
@@ -941,6 +1008,7 @@
   // 感嘆符・数字・ハイフンの変換をまとめて適用する（本文・タイトル・著者名で共通利用）
   function applyBasicConversions(text) {
     let result = stripVariationSelectors(text);
+    result = normalizeWaveDash(result);
     result = convertEl.checked ? applyPunctuationRules(result) : result;
     if (convertNumEl.checked) result = convertNumbersToKanji(result);
     if (convertHyphenEl.checked) result = convertHyphenToChoonpu(result);
@@ -955,9 +1023,11 @@
     const converted = applyBasicConversions(raw);
 
     // コピー用テキストは記号・数字変換のみ。改行を勝手に増やすと原稿が壊れるので入れない。
-    // ｜《》のルビ記法はそのまま残し（青空文庫形式やカクヨム・小説家になろう等がそのまま解釈できるため）、
+    // ルビは「ルビの出力形式」で選んだ形式（青空文庫｜《》／pixiv [[rb:>]]）に、入力時の記法を問わず揃える。
     // [[...]]の傍点記法は青空文庫の注記形式［＃「」に傍点］に変換し、{{...}}の濁点強制付与は実際に濁点を付けて書き戻す。
-    const finalConverted = convertDakutenMarkup(convertEmphasisToAozora(converted));
+    const rubyFormat = rubyFormatEl.value;
+    const rubyNormalized = rubyFormat === 'pixiv' ? convertAozoraRubyToPixiv(converted) : convertPixivRubyToAozora(converted);
+    const finalConverted = convertDakutenMarkup(convertEmphasisToAozora(rubyNormalized));
     outputEl.value = finalConverted;
     updateClipStudioOutput(raw, finalConverted);
 
@@ -975,10 +1045,10 @@
     const titleVal = applyBasicConversions(titleTextEl.value.trim());
     const authorVal = applyBasicConversions(authorTextEl.value.trim());
     if (titleVal) {
-      titleHtml += '<div class="v-line v-title">' + highlightCombined(escapeHtml(titleVal)) + '</div>';
+      titleHtml += '<div class="v-line v-title">' + renderInlineText(titleVal) + '</div>';
     }
     if (authorVal) {
-      titleHtml += '<div class="v-line v-author">' + highlightCombined(escapeHtml(authorVal)) + '</div>';
+      titleHtml += '<div class="v-line v-author">' + renderInlineText(authorVal) + '</div>';
     }
 
     previewEl.innerHTML = titleHtml + columns
@@ -1019,6 +1089,7 @@
     saveToStorage('authorText', authorTextEl.value);
     saveToStorage('lineLength', lineLengthEl.value);
     saveToStorage('pageSizePreset', pageSizePresetEl.value);
+    saveToStorage('rubyFormat', rubyFormatEl.value);
     saveToStorage('convertPunctuation', convertEl.checked ? '1' : '0');
     saveToStorage('convertNumbers', convertNumEl.checked ? '1' : '0');
     saveToStorage('convertHyphen', convertHyphenEl.checked ? '1' : '0');
@@ -1045,6 +1116,11 @@
     const savedPreset = loadFromStorage('pageSizePreset');
     if (savedPreset !== null && PAGE_SIZE_PRESETS[savedPreset] !== undefined) {
       pageSizePresetEl.value = savedPreset;
+    }
+
+    const savedRubyFormat = loadFromStorage('rubyFormat');
+    if (savedRubyFormat === 'aozora' || savedRubyFormat === 'pixiv') {
+      rubyFormatEl.value = savedRubyFormat;
     }
 
     const savedConvert = loadFromStorage('convertPunctuation');
@@ -1092,6 +1168,7 @@
       scheduleUpdate();
     }
   });
+  rubyFormatEl.addEventListener('change', scheduleUpdate);
   // 1行の文字数をプリセットと違う値に手動で変更したら、選択を「カスタム」に戻す
   lineLengthEl.addEventListener('input', function () {
     const preset = PAGE_SIZE_PRESETS[pageSizePresetEl.value];
@@ -1151,7 +1228,7 @@
     const authorVal = applyBasicConversions(authorTextEl.value.trim());
     if (titleVal) headerLines.push(titleVal);
     if (authorVal) headerLines.push(authorVal);
-    const bodyText = lastColumns.map(unitsToPlainText).join('\n');
+    const bodyText = lastColumns.map(function (col) { return unitsToPlainText(col, rubyFormatEl.value); }).join('\n');
     const text = headerLines.length ? headerLines.join('\n') + '\n\n' + bodyText : bodyText;
     downloadFile('縦書きプレビュー.txt', text, 'text/plain');
   });
