@@ -197,6 +197,19 @@
     opacity: 0.7;
     margin: -0.5rem 0 1rem;
   }
+  .sync-status {
+    font-size: 0.8rem;
+    opacity: 0.7;
+  }
+  /* 原稿ファイル同期中は入力欄が読み取り専用になるため、見た目でもわかるようにする */
+  #inputText[readonly] {
+    opacity: 0.75;
+    cursor: default;
+  }
+  .export-buttons button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
   .pane-header {
     display: flex;
     flex-wrap: wrap;
@@ -389,9 +402,17 @@
     <label>1段の列数
       <input type="number" id="columnsPerRow" min="1" placeholder="自動" disabled>
     </label>
+    <label>1ページの行数
+      <input type="number" id="linesPerPage" min="1" placeholder="未指定">
+    </label>
     <label>
       <input type="checkbox" id="clipStudioEnabled">
       クリップスタジオ形式でセリフを抽出する
+    </label>
+    <label>
+      <input type="checkbox" id="fileSyncEnabled">
+      原稿ファイル（原稿.txt）と同期する
+      <span id="fileSyncStatus" class="sync-status"></span>
     </label>
   </div>
   <p class="hint">タイトル・著者名を入力すると、縦書きプレビューの一番右（先頭）に大きめの文字で表示されます（どちらも空欄なら表示されません）。テキスト・HTML出力や印刷にも反映されます。</p>
@@ -400,6 +421,8 @@
   <p class="hint">強調（傍点）: 「[[強調したい文字列]]」のように二重角括弧で囲むと、縦書きプレビューで文字の右側に傍点が付きます。日本語入力で全角になった「［［強調したい文字列］］」でも認識します。</p>
   <p class="hint">濁点の強制付与: 「{{あ}}」のように二重波括弧で囲むと、「あ゙」のように本来濁点が付かない文字にも濁点を付けられます（叫び声などの表現用）。全角「｛｛｝｝」でも認識します。</p>
   <p class="hint">2段組み: 列をA4用紙1ページ分の幅ごとに上下2段へ分けて、本のページのように表示・印刷します。「1段の列数」を指定すると、自動計算の代わりにその列数ごとに次の段へ進みます（空欄なら自動）。</p>
+  <p class="hint">ページ数の目安: 1段組みのとき「1ページの行数」を指定すると、本文の列数（空行も1行として数えます）から大体のページ数を下の文字数欄に表示します（タイトル・著者名は含みません）。2段組みのときは、プレビューのページ数をそのまま表示します。</p>
+  <p class="hint">原稿ファイルと同期: VS Code の Live Preview などローカルサーバー経由で開いているとき、このフォルダの「原稿.txt」を約1秒ごとに読み込み、変更があれば入力欄へ自動で流し込みます。同期中は入力欄を直接編集できません（原稿.txt 側を編集・保存してください）。ファイルを直接開いた場合（file://）は使えません。</p>
   <p class="hint">入力内容と各設定は、このブラウザ内（localStorage）に自動保存されます。ページを再読み込みしても消えません（他の端末やサーバーには送信されません）。</p>
 
   <div class="panes">
@@ -466,6 +489,7 @@
   const convertHyphenEl = document.getElementById('convertHyphen');
   const twoColumnModeEl = document.getElementById('twoColumnMode');
   const columnsPerRowEl = document.getElementById('columnsPerRow');
+  const linesPerPageEl = document.getElementById('linesPerPage');
   const clipStudioOutputEl = document.getElementById('clipStudioOutput');
   const clipStudioListEl = document.getElementById('clipStudioList');
   const clipStudioModeRadios = document.querySelectorAll('input[name="clipStudioMode"]');
@@ -476,6 +500,8 @@
   const exportTxtEl = document.getElementById('exportTxt');
   const exportHtmlEl = document.getElementById('exportHtml');
   const exportPdfEl = document.getElementById('exportPdf');
+  const fileSyncEnabledEl = document.getElementById('fileSyncEnabled');
+  const fileSyncStatusEl = document.getElementById('fileSyncStatus');
 
   let lastColumns = [];
 
@@ -865,6 +891,11 @@
     return Number.isFinite(v) && v > 0 ? v : 0;
   }
 
+  function getLinesPerPage() {
+    const v = parseInt(linesPerPageEl.value, 10);
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  }
+
   function wrapLinesIntoPageDom(pages, pageClassName) {
     const frag = document.createDocumentFragment();
     pages.forEach(function (rows) {
@@ -1058,7 +1089,18 @@
       applyTwoColumnLayout();
     }
 
-    statsEl.textContent = '総文字数: ' + totalChars + '字　／　列数: ' + columns.length + '列（1列 ' + n + '字）';
+    let statsText = '総文字数: ' + totalChars + '字　／　列数: ' + columns.length + '列（1列 ' + n + '字）';
+    if (twoColumnModeEl.checked) {
+      statsText += '　／　' + previewEl.querySelectorAll('.preview-page').length + 'ページ';
+    } else {
+      // 1段組みは「1ページの行数」が指定されていれば、本文の列数（空行を含む）を1ページあたりの行数で割って目安を出す。
+      // タイトル・著者名は扉ページなど別扱いになることが多いため数えない
+      const linesPerPage = getLinesPerPage();
+      if (linesPerPage > 0) {
+        statsText += '　／　約' + Math.ceil(columns.length / linesPerPage) + 'ページ（1ページ ' + linesPerPage + '行）';
+      }
+    }
+    statsEl.textContent = statsText;
     lastColumns = columns;
     persistSettings();
   }
@@ -1095,9 +1137,11 @@
     saveToStorage('convertHyphen', convertHyphenEl.checked ? '1' : '0');
     saveToStorage('twoColumnMode', twoColumnModeEl.checked ? '1' : '0');
     saveToStorage('columnsPerRow', columnsPerRowEl.value);
+    saveToStorage('linesPerPage', linesPerPageEl.value);
     saveToStorage('clipStudioEnabled', clipStudioEnabledEl.checked ? '1' : '0');
     const checkedRadio = document.querySelector('input[name="clipStudioMode"]:checked');
     saveToStorage('clipStudioMode', checkedRadio ? checkedRadio.value : 'vertical');
+    saveToStorage('fileSyncEnabled', fileSyncEnabledEl.checked ? '1' : '0');
   }
 
   function restoreSettings() {
@@ -1135,9 +1179,13 @@
     const savedTwoCol = loadFromStorage('twoColumnMode');
     if (savedTwoCol !== null) twoColumnModeEl.checked = savedTwoCol === '1';
     columnsPerRowEl.disabled = !twoColumnModeEl.checked;
+    linesPerPageEl.disabled = twoColumnModeEl.checked;
 
     const savedColsPerRow = loadFromStorage('columnsPerRow');
     if (savedColsPerRow !== null) columnsPerRowEl.value = savedColsPerRow;
+
+    const savedLinesPerPage = loadFromStorage('linesPerPage');
+    if (savedLinesPerPage !== null) linesPerPageEl.value = savedLinesPerPage;
 
     const savedClipEnabled = loadFromStorage('clipStudioEnabled');
     if (savedClipEnabled !== null) {
@@ -1149,10 +1197,13 @@
     if (savedClipMode !== null) {
       clipStudioModeRadios.forEach(function (el) { el.checked = el.value === savedClipMode; });
     }
+
+    const savedFileSync = loadFromStorage('fileSyncEnabled');
+    if (savedFileSync !== null) fileSyncEnabledEl.checked = savedFileSync === '1';
   }
 
   restoreSettings();
-  [inputEl, titleTextEl, authorTextEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl, twoColumnModeEl, columnsPerRowEl].forEach(function (el) {
+  [inputEl, titleTextEl, authorTextEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl, twoColumnModeEl, columnsPerRowEl, linesPerPageEl].forEach(function (el) {
     el.addEventListener('input', scheduleUpdate);
   });
   clipStudioModeRadios.forEach(function (el) {
@@ -1160,6 +1211,7 @@
   });
   twoColumnModeEl.addEventListener('input', function () {
     columnsPerRowEl.disabled = !twoColumnModeEl.checked;
+    linesPerPageEl.disabled = twoColumnModeEl.checked;
   });
   pageSizePresetEl.addEventListener('change', function () {
     const preset = PAGE_SIZE_PRESETS[pageSizePresetEl.value];
@@ -1263,7 +1315,135 @@
     window.print();
   });
 
+  // 原稿ファイル同期: ローカルサーバー経由で開いているときだけ、原稿.txt を定期的に読み込んで入力欄へ流し込む。
+  // サーバーは保存済みの内容しか返さないため、エディタ側で保存されて初めて反映される。
+  // 入力欄の現在値ではなく前回読み込んだ内容と比較し、ファイルが実際に変わったときだけ再描画する
+  // （毎回再描画するとプレビューのスクロール位置などが落ち着かないため）。
+  const SYNC_FILE_URL = encodeURI('原稿.txt');
+  const SYNC_INTERVAL_MS = 1000;
+  let syncTimer = null;
+  let syncInFlight = false;
+  let lastSyncedText = null;
+
+  function setSyncStatus(message) {
+    fileSyncStatusEl.textContent = message ? '（' + message + '）' : '';
+  }
+
+  // 原稿の流し込みで再描画したときや、Live Preview が原稿.txt の変更を検知してページごと再読み込みしたときに
+  // 読んでいた位置へ戻れるよう、ページ・入力欄・縦書きプレビューのスクロール位置を記録・復元する。
+  // 再読み込みをまたいで残すため、スクロールのたびに sessionStorage（このタブ限り）へ保存しておく。
+  const SCROLL_STATE_KEY = STORAGE_PREFIX + 'scrollState';
+  let scrollSaveTimer = null;
+
+  function captureScrollState() {
+    return {
+      pageX: window.scrollX,
+      pageY: window.scrollY,
+      inputTop: inputEl.scrollTop,
+      previewLeft: previewEl.scrollLeft,
+      previewTop: previewEl.scrollTop,
+    };
+  }
+
+  function restoreScrollState(state) {
+    if (!state) return;
+    inputEl.scrollTop = state.inputTop;
+    previewEl.scrollLeft = state.previewLeft;
+    previewEl.scrollTop = state.previewTop;
+    window.scrollTo(state.pageX, state.pageY);
+  }
+
+  function saveScrollState() {
+    try {
+      sessionStorage.setItem(SCROLL_STATE_KEY, JSON.stringify(captureScrollState()));
+    } catch (e) {
+      // 保存できない場合は何もしない
+    }
+  }
+
+  function loadSavedScrollState() {
+    try {
+      return JSON.parse(sessionStorage.getItem(SCROLL_STATE_KEY));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function scheduleScrollSave() {
+    clearTimeout(scrollSaveTimer);
+    scrollSaveTimer = setTimeout(saveScrollState, 100);
+  }
+
+  [window, inputEl, previewEl].forEach(function (el) {
+    el.addEventListener('scroll', scheduleScrollSave, { passive: true });
+  });
+  window.addEventListener('pagehide', saveScrollState);
+
+  // 同期中は入力欄を読み取り専用にし、手入力が次の読み込みで上書きされて消えるのを防ぐ
+  function setInputLocked(locked) {
+    inputEl.readOnly = locked;
+    inputClearEl.disabled = locked;
+  }
+
+  function pollSyncFile() {
+    if (syncInFlight) return;
+    syncInFlight = true;
+    fetch(SYNC_FILE_URL, { cache: 'no-store' })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.arrayBuffer();
+      })
+      .then(function (buf) {
+        if (!fileSyncEnabledEl.checked) return;
+        setInputLocked(true);
+        // サーバーの文字コード指定に頼らずUTF-8として読む（BOMはTextDecoderが除去する）。改行はCRLFをLFに揃える
+        const text = new TextDecoder('utf-8').decode(buf).replace(/\r\n?/g, '\n');
+        if (text !== lastSyncedText) {
+          lastSyncedText = text;
+          const scrollState = captureScrollState();
+          inputEl.value = text;
+          update();
+          restoreScrollState(scrollState);
+        }
+        setSyncStatus('同期中');
+      })
+      .catch(function () {
+        if (!fileSyncEnabledEl.checked) return;
+        // 読み込めないときは入力欄を編集可能に戻し、手入力で使い続けられるようにする
+        setInputLocked(false);
+        setSyncStatus('原稿.txt を読み込めません');
+      })
+      .then(function () {
+        syncInFlight = false;
+      });
+  }
+
+  // file:// で開いた場合はブラウザの制限でファイルを読み込めないため、同期を始めない
+  function applyFileSyncState() {
+    clearInterval(syncTimer);
+    syncTimer = null;
+    lastSyncedText = null;
+    const canSync = location.protocol !== 'file:';
+    setInputLocked(false);
+    if (!fileSyncEnabledEl.checked) {
+      setSyncStatus('');
+    } else if (!canSync) {
+      setSyncStatus('ファイルを直接開いているため使えません。Live Preview で開いてください');
+    } else {
+      setSyncStatus('読み込み中');
+      pollSyncFile();
+      syncTimer = setInterval(pollSyncFile, SYNC_INTERVAL_MS);
+    }
+  }
+
+  fileSyncEnabledEl.addEventListener('input', function () {
+    applyFileSyncState();
+    persistSettings();
+  });
+
   update();
+  restoreScrollState(loadSavedScrollState());
+  applyFileSyncState();
 })();
 </script>
 </body>

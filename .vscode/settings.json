@@ -1,0 +1,21 @@
+{
+  // Live Preview（ms-vscode.live-server）の設定
+  // プレビューを開いたときに表示するページ
+  "livePreview.defaultPreviewPath": "/index.html",
+  // VS Code 内のタブでプレビューを開く
+  "livePreview.openPreviewTarget": "Embedded Preview",
+  // ファイル変更時にページを自動で再読み込みしない
+  // （原稿.txt の保存ごとに再読み込みされると表示がちらつくため。原稿の反映はツール側の同期機能が行う。
+  //   index.html を編集したときは、プレビューの再読み込みボタンで手動更新する）
+  "livePreview.autoRefreshPreview": "Never",
+  // ポートを固定する（localStorage はオリジンごとに分かれるため、
+  // ポートが変わると保存した入力内容・設定が読み込めなくなる）
+  "livePreview.portNumber": 3000,
+
+  // 原稿.txt との同期はディスクに保存された内容を読むため、
+  // 入力を止めて0.5秒後に自動保存してプレビューへ流し込む
+  "files.autoSave": "afterDelay",
+  "files.autoSaveDelay": 500,
+  // 原稿.txt をUTF-8で保存する（ツール側はUTF-8として読み込む）
+  "files.encoding": "utf8"
+}
