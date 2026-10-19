@@ -17,5 +17,12 @@
   "files.autoSave": "afterDelay",
   "files.autoSaveDelay": 500,
   // 原稿.txt をUTF-8で保存する（ツール側はUTF-8として読み込む）
-  "files.encoding": "utf8"
+  "files.encoding": "utf8",
+
+  // テキストファイル（原稿.txt）では入力中の単語補完を出さない
+  // （必要なときは Ctrl+Space で手動表示できる）
+  "[plaintext]": {
+    "editor.quickSuggestions": { "other": "off", "comments": "off", "strings": "off" },
+    "editor.suggestOnTriggerCharacters": false
+  }
 }

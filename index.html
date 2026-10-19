@@ -396,6 +396,10 @@
       ハイフン(-)を長音記号(ー)に変換する
     </label>
     <label>
+      <input type="checkbox" id="autoIndent">
+      段落の先頭を1字下げする（「」『』（）で始まる行は除く）
+    </label>
+    <label>
       <input type="checkbox" id="twoColumnMode">
       2段組みで表示する
     </label>
@@ -417,6 +421,7 @@
   </div>
   <p class="hint">タイトル・著者名を入力すると、縦書きプレビューの一番右（先頭）に大きめの文字で表示されます（どちらも空欄なら表示されません）。テキスト・HTML出力や印刷にも反映されます。</p>
   <p class="hint">同人誌サイズ: 選択すると「1行の文字数」を判型ごとの目安に自動設定します。フォントサイズや余白で最適な字数は変わるため、あくまで目安です。「1行の文字数」を直接編集すると自動的に「カスタム」に戻ります。</p>
+  <p class="hint">字下げ: チェックを入れると、「」『』（）で始まらない段落の先頭に全角スペースを1つ入れて1字下げします。空行や、すでに空白で始まっている行はそのままです。縦書きプレビューだけでなく、コピー用テキスト・テキストダウンロードにも反映されます。</p>
   <p class="hint">ルビ: 「本気《マジ》」のように漢字の直後に《よみ》を付けるか、「｜任意の語句《よみ》」のように｜（全角縦棒）で始まりを指定できます（青空文庫形式）。「[[rb:語句&gt;よみ]]」（pixiv形式）も入力として認識します。「ルビの出力形式」で選んだ形式に、コピー用テキスト・テキストダウンロードのルビ表記がすべて揃えられます。</p>
   <p class="hint">強調（傍点）: 「[[強調したい文字列]]」のように二重角括弧で囲むと、縦書きプレビューで文字の右側に傍点が付きます。日本語入力で全角になった「［［強調したい文字列］］」でも認識します。</p>
   <p class="hint">濁点の強制付与: 「{{あ}}」のように二重波括弧で囲むと、「あ゙」のように本来濁点が付かない文字にも濁点を付けられます（叫び声などの表現用）。全角「｛｛｝｝」でも認識します。</p>
@@ -487,6 +492,7 @@
   const convertEl = document.getElementById('convertPunctuation');
   const convertNumEl = document.getElementById('convertNumbers');
   const convertHyphenEl = document.getElementById('convertHyphen');
+  const autoIndentEl = document.getElementById('autoIndent');
   const twoColumnModeEl = document.getElementById('twoColumnMode');
   const columnsPerRowEl = document.getElementById('columnsPerRow');
   const linesPerPageEl = document.getElementById('linesPerPage');
@@ -1037,6 +1043,15 @@
   }
 
   // 感嘆符・数字・ハイフンの変換をまとめて適用する（本文・タイトル・著者名で共通利用）
+  // 段落（改行区切りの各行）の先頭に全角スペースを1つ入れて字下げする。
+  // 会話文など（「『（で始まる行。半角の(も含む）・空行・すでに空白で始まっている行（手動で字下げ済み）はそのままにする
+  function applyParagraphIndent(text) {
+    return text.split('\n').map(function (line) {
+      if (line === '' || /^[「『（(]/.test(line) || /^\s/.test(line)) return line;
+      return '　' + line;
+    }).join('\n');
+  }
+
   function applyBasicConversions(text) {
     let result = stripVariationSelectors(text);
     result = normalizeWaveDash(result);
@@ -1051,7 +1066,9 @@
     let n = parseInt(lineLengthEl.value, 10);
     if (!Number.isFinite(n) || n < 1) n = 1;
 
-    const converted = applyBasicConversions(raw);
+    // 字下げは本文だけに適用する（タイトル・著者名は applyBasicConversions のみ）
+    const basicConverted = applyBasicConversions(raw);
+    const converted = autoIndentEl.checked ? applyParagraphIndent(basicConverted) : basicConverted;
 
     // コピー用テキストは記号・数字変換のみ。改行を勝手に増やすと原稿が壊れるので入れない。
     // ルビは「ルビの出力形式」で選んだ形式（青空文庫｜《》／pixiv [[rb:>]]）に、入力時の記法を問わず揃える。
@@ -1135,6 +1152,7 @@
     saveToStorage('convertPunctuation', convertEl.checked ? '1' : '0');
     saveToStorage('convertNumbers', convertNumEl.checked ? '1' : '0');
     saveToStorage('convertHyphen', convertHyphenEl.checked ? '1' : '0');
+    saveToStorage('autoIndent', autoIndentEl.checked ? '1' : '0');
     saveToStorage('twoColumnMode', twoColumnModeEl.checked ? '1' : '0');
     saveToStorage('columnsPerRow', columnsPerRowEl.value);
     saveToStorage('linesPerPage', linesPerPageEl.value);
@@ -1176,6 +1194,9 @@
     const savedHyphen = loadFromStorage('convertHyphen');
     if (savedHyphen !== null) convertHyphenEl.checked = savedHyphen === '1';
 
+    const savedIndent = loadFromStorage('autoIndent');
+    if (savedIndent !== null) autoIndentEl.checked = savedIndent === '1';
+
     const savedTwoCol = loadFromStorage('twoColumnMode');
     if (savedTwoCol !== null) twoColumnModeEl.checked = savedTwoCol === '1';
     columnsPerRowEl.disabled = !twoColumnModeEl.checked;
@@ -1203,7 +1224,7 @@
   }
 
   restoreSettings();
-  [inputEl, titleTextEl, authorTextEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl, twoColumnModeEl, columnsPerRowEl, linesPerPageEl].forEach(function (el) {
+  [inputEl, titleTextEl, authorTextEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl, autoIndentEl, twoColumnModeEl, columnsPerRowEl, linesPerPageEl].forEach(function (el) {
     el.addEventListener('input', scheduleUpdate);
   });
   clipStudioModeRadios.forEach(function (el) {
