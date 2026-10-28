@@ -396,6 +396,10 @@
       ハイフン(-)を長音記号(ー)に変換する
     </label>
     <label>
+      <input type="checkbox" id="convertDakuten" checked>
+      濁点・半濁点（゛゜ﾞﾟ）を直前の文字に結合する（あ゛→あ゙）
+    </label>
+    <label>
       <input type="checkbox" id="kinsoku" checked>
       禁則処理を行う（句読点のぶら下げ・行頭／行末禁則の追い出し）
     </label>
@@ -423,7 +427,7 @@
   <p class="hint">同人誌サイズ: 選択すると「1行の文字数」を判型ごとの目安に自動設定します。フォントサイズや余白で最適な字数は変わるため、あくまで目安です。「1行の文字数」を直接編集すると自動的に「カスタム」に戻ります。</p>
   <p class="hint">ルビ: 「本気《マジ》」のように漢字の直後に《よみ》を付けるか、「｜任意の語句《よみ》」のように｜（全角縦棒）で始まりを指定できます（青空文庫形式）。「[[rb:語句&gt;よみ]]」（pixiv形式）も入力として認識します。「ルビの出力形式」で選んだ形式に、コピー用テキスト・テキストダウンロードのルビ表記がすべて揃えられます。</p>
   <p class="hint">強調（傍点）: 「[[強調したい文字列]]」のように二重角括弧で囲むと、縦書きプレビューで文字の右側に傍点が付きます。日本語入力で全角になった「［［強調したい文字列］］」でも認識します。</p>
-  <p class="hint">濁点の強制付与: 「{{あ}}」のように二重波括弧で囲むと、「あ゙」のように本来濁点が付かない文字にも濁点を付けられます（叫び声などの表現用）。全角「｛｛｝｝」でも認識します。</p>
+  <p class="hint">濁点の強制付与: 「{{あ}}」のように二重波括弧で囲むと、「あ゙」のように本来濁点が付かない文字にも濁点を付けられます（叫び声などの表現用）。全角「｛｛｝｝」でも認識します。また「濁点・半濁点を直前の文字に結合する」が ON なら、日本語入力で打った「あ゛」「う゜」や半角の「ｱﾞ」も、記法なしで1文字分の「あ゙」「う゚」「ア゙」に変換します（「か゛」→「が」のように、通常の濁音・半濁音になる組み合わせはその文字に置き換えます）。</p>
   <p class="hint">禁則処理: 列の先頭に「。」「」」「っ」「ー」などが、列の末尾に「「」「（」などが来ないように折り返し位置を調整します。「、」「。」は1文字だけ列の下にはみ出させ（ぶら下げ）、それ以外は前の列の文字を次の列へ送ります（追い出し）。「……」「――」の2連と縦中横の「!!」などは途中で分割しません。プレビュー上の折り返しのみに影響し、コピー用テキストは変わりません。</p>
   <p class="hint">2段組み:列をA4用紙1ページ分の幅ごとに上下2段へ分けて、本のページのように表示・印刷します。「1段の列数」を指定すると、自動計算の代わりにその列数ごとに次の段へ進みます（空欄なら自動）。</p>
   <p class="hint">ページ数の目安: 1段組みのとき「1ページの行数」を指定すると、本文の列数（空行も1行として数えます）から大体のページ数を下の文字数欄に表示します（タイトル・著者名は含みません）。2段組みのときは、プレビューのページ数をそのまま表示します。</p>
@@ -492,6 +496,7 @@
   const convertEl = document.getElementById('convertPunctuation');
   const convertNumEl = document.getElementById('convertNumbers');
   const convertHyphenEl = document.getElementById('convertHyphen');
+  const convertDakutenEl = document.getElementById('convertDakuten');
   const kinsokuEl = document.getElementById('kinsoku');
   const twoColumnModeEl = document.getElementById('twoColumnMode');
   const columnsPerRowEl = document.getElementById('columnsPerRow');
@@ -540,6 +545,20 @@
   }
 
   // 半角ハイフンは縦書きで正しく回転せず横棒のまま表示されるため、長音記号に置き換える
+  // 日本語入力で打った単独の濁点「゛」(U+309B)・半濁点「゜」(U+309C)や、半角の「ﾞ」「ﾟ」は独立した1文字のため、
+  // 縦書きでは直前の文字と別のマスに分かれてしまう。直前の文字に結合する濁点(U+3099)・半濁点(U+309A)に置き換えて1マスにまとめる。
+  // - 「か゛」→「が」のように合成済みの文字があるものは NFC 正規化でその文字にする（フォントでの表示が安定するため）
+  // - 半角カタカナ「ｶﾞ」「ｱﾞ」は全角に直してから結合する（「ガ」「ア゙」）
+  // - 行頭や空白・記号の直後にある「゛」は、記号として使っているものとみなして変換しない
+  const SPACING_DAKUTEN_RE = /(\p{L})([゛゜ﾞﾟ])/gu;
+  function convertSpacingDakuten(text) {
+    return text.replace(SPACING_DAKUTEN_RE, function (m, base, mark) {
+      const combining = (mark === '゛' || mark === 'ﾞ') ? '\u3099' : '\u309A';
+      const fullBase = /[\uFF66-\uFF9D]/u.test(base) ? base.normalize('NFKC') : base;
+      return (fullBase + combining).normalize('NFC');
+    });
+  }
+
   function convertHyphenToChoonpu(text) {
     return text.replaceAll('-', 'ー');
   }
@@ -1112,6 +1131,7 @@
     result = convertEl.checked ? applyPunctuationRules(result) : result;
     if (convertNumEl.checked) result = convertNumbersToKanji(result);
     if (convertHyphenEl.checked) result = convertHyphenToChoonpu(result);
+    if (convertDakutenEl.checked) result = convertSpacingDakuten(result);
     return result;
   }
 
@@ -1204,6 +1224,7 @@
     saveToStorage('convertPunctuation', convertEl.checked ? '1' : '0');
     saveToStorage('convertNumbers', convertNumEl.checked ? '1' : '0');
     saveToStorage('convertHyphen', convertHyphenEl.checked ? '1' : '0');
+    saveToStorage('convertDakuten', convertDakutenEl.checked ? '1' : '0');
     saveToStorage('kinsoku', kinsokuEl.checked ? '1' : '0');
     saveToStorage('twoColumnMode', twoColumnModeEl.checked ? '1' : '0');
     saveToStorage('columnsPerRow', columnsPerRowEl.value);
@@ -1246,6 +1267,9 @@
     const savedHyphen = loadFromStorage('convertHyphen');
     if (savedHyphen !== null) convertHyphenEl.checked = savedHyphen === '1';
 
+    const savedDakuten = loadFromStorage('convertDakuten');
+    if (savedDakuten !== null) convertDakutenEl.checked = savedDakuten === '1';
+
     const savedKinsoku = loadFromStorage('kinsoku');
     if (savedKinsoku !== null) kinsokuEl.checked = savedKinsoku === '1';
 
@@ -1276,7 +1300,7 @@
   }
 
   restoreSettings();
-  [inputEl, titleTextEl, authorTextEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl, kinsokuEl, twoColumnModeEl, columnsPerRowEl, linesPerPageEl].forEach(function (el) {
+  [inputEl, titleTextEl, authorTextEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl, convertDakutenEl, kinsokuEl, twoColumnModeEl, columnsPerRowEl, linesPerPageEl].forEach(function (el) {
     el.addEventListener('input', scheduleUpdate);
   });
   clipStudioModeRadios.forEach(function (el) {
