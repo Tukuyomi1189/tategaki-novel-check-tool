@@ -400,6 +400,10 @@
       濁点・半濁点（゛゜ﾞﾟ）を直前の文字に結合する（あ゛→あ゙）
     </label>
     <label>
+      <input type="checkbox" id="tcyDigits" checked>
+      半角数字2桁までを縦中横にする（23→1マス）
+    </label>
+    <label>
       <input type="checkbox" id="kinsoku" checked>
       禁則処理を行う（句読点のぶら下げ・行頭／行末禁則の追い出し）
     </label>
@@ -428,6 +432,7 @@
   <p class="hint">ルビ: 「本気《マジ》」のように漢字の直後に《よみ》を付けるか、「｜任意の語句《よみ》」のように｜（全角縦棒）で始まりを指定できます（青空文庫形式）。「[[rb:語句&gt;よみ]]」（pixiv形式）も入力として認識します。「ルビの出力形式」で選んだ形式に、コピー用テキスト・テキストダウンロードのルビ表記がすべて揃えられます。</p>
   <p class="hint">強調（傍点）: 「[[強調したい文字列]]」のように二重角括弧で囲むと、縦書きプレビューで文字の右側に傍点が付きます。日本語入力で全角になった「［［強調したい文字列］］」でも認識します。</p>
   <p class="hint">濁点の強制付与: 「{{あ}}」のように二重波括弧で囲むと、「あ゙」のように本来濁点が付かない文字にも濁点を付けられます（叫び声などの表現用）。全角「｛｛｝｝」でも認識します。また「濁点・半濁点を直前の文字に結合する」が ON なら、日本語入力で打った「あ゛」「う゜」や半角の「ｱﾞ」も、記法なしで1文字分の「あ゙」「う゚」「ア゙」に変換します（「か゛」→「が」のように、通常の濁音・半濁音になる組み合わせはその文字に置き換えます）。</p>
+  <p class="hint">数字の縦中横: 「数字を漢数字に変換する」を外して算用数字のまま書くとき、半角数字の1〜2桁（「23時」の「23」など）を1マスに収めて縦向きに表示します。3桁以上は横倒しのままです。プレビュー上の表示のみで、コピー用テキストは変わりません。</p>
   <p class="hint">禁則処理: 列の先頭に「。」「」」「っ」「ー」などが、列の末尾に「「」「（」などが来ないように折り返し位置を調整します。「、」「。」は1文字だけ列の下にはみ出させ（ぶら下げ）、それ以外は前の列の文字を次の列へ送ります（追い出し）。「……」「――」の2連と縦中横の「!!」などは途中で分割しません。プレビュー上の折り返しのみに影響し、コピー用テキストは変わりません。</p>
   <p class="hint">2段組み:列をA4用紙1ページ分の幅ごとに上下2段へ分けて、本のページのように表示・印刷します。「1段の列数」を指定すると、自動計算の代わりにその列数ごとに次の段へ進みます（空欄なら自動）。</p>
   <p class="hint">ページ数の目安: 1段組みのとき「1ページの行数」を指定すると、本文の列数（空行も1行として数えます）から大体のページ数を下の文字数欄に表示します（タイトル・著者名は含みません）。2段組みのときは、プレビューのページ数をそのまま表示します。</p>
@@ -498,6 +503,7 @@
   const convertHyphenEl = document.getElementById('convertHyphen');
   const convertDakutenEl = document.getElementById('convertDakuten');
   const kinsokuEl = document.getElementById('kinsoku');
+  const tcyDigitsEl = document.getElementById('tcyDigits');
   const twoColumnModeEl = document.getElementById('twoColumnMode');
   const columnsPerRowEl = document.getElementById('columnsPerRow');
   const linesPerPageEl = document.getElementById('linesPerPage');
@@ -671,13 +677,23 @@
 
   // 文字列を「縦書きで1マス（または分割できない2マス）を占める単位」に分割する。
   // - 結合文字（濁点 U+3099 など）は直前の文字とまとめ、文字と濁点の間で列が切れないようにする
-  // - 縦中横で1マスに収める「!!」「!?」「?!」は1マスとして扱う（highlightCombined と同じ左からの最長一致）
+  // - 縦中横で1マスに収める「!!」「!?」「?!」と、「数字の縦中横」が ON のときの半角数字1〜2桁は1マスとして扱う
   // - 「……」「――」の2連は途中で分割しない（2マスの1単位として扱う）
-  const CELL_RE = /!!|!\?|\?!|……|‥‥|――|——|[\s\S]\p{M}*/gu;
+  // 縦中横の判定（TCY_RE）は、タイトル・著者名の描画（renderInlineText）でも同じものを使う
+  const TCY_SYMBOL_SRC = '!!|!\\?|\\?!';
+  const TCY_DIGITS_SRC = '(?<![0-9])[0-9]{1,2}(?![0-9])';
+  const CELL_REST_SRC = '……|‥‥|――|——|[\\s\\S]\\p{M}*';
+  // 縦中横になる候補を先頭のキャプチャグループに入れ、どの分岐で一致したかで縦中横かどうかを決める
+  // （切り出した1文字だけを改めて判定すると、「2026」から切り出した「2」まで縦中横と誤判定するため）
+  const CELL_RE_WITH_DIGITS = new RegExp('(' + TCY_DIGITS_SRC + '|' + TCY_SYMBOL_SRC + ')|' + CELL_REST_SRC, 'gu');
+  const CELL_RE_NO_DIGITS = new RegExp('(' + TCY_SYMBOL_SRC + ')|' + CELL_REST_SRC, 'gu');
   const DOUBLE_CELLS = new Set(['……', '‥‥', '――', '——']);
+  // 「半角数字2桁までを縦中横にする」の状態。update() のたびにチェックボックスから読み直す
+  let tcyDigitsEnabled = true;
   function splitCells(text) {
-    return (text.match(CELL_RE) || []).map(function (cell) {
-      return { text: cell, len: DOUBLE_CELLS.has(cell) ? 2 : 1 };
+    const cellRe = tcyDigitsEnabled ? CELL_RE_WITH_DIGITS : CELL_RE_NO_DIGITS;
+    return Array.from(text.matchAll(cellRe), function (m) {
+      return { text: m[0], len: DOUBLE_CELLS.has(m[0]) ? 2 : 1, tcy: m[1] !== undefined };
     });
   }
 
@@ -687,11 +703,11 @@
     for (const t of tokenize(paragraph)) {
       if (t.type === 'plain' || t.type === 'emphasis') {
         for (const cell of splitCells(t.text)) {
-          units.push({ kind: 'char', text: cell.text, len: cell.len, emphasis: t.type === 'emphasis' });
+          units.push({ kind: 'char', text: cell.text, len: cell.len, tcy: cell.tcy, emphasis: t.type === 'emphasis' });
         }
       } else if (t.type === 'dakuten') {
         for (const cell of splitCells(t.text)) {
-          units.push({ kind: 'char', text: cell.text + '゙', len: cell.len, emphasis: false });
+          units.push({ kind: 'char', text: cell.text + '゙', len: cell.len, tcy: false, emphasis: false });
         }
       } else {
         units.push({ kind: 'ruby', base: t.base, reading: t.reading, len: Array.from(t.base).length });
@@ -787,57 +803,70 @@
     return div.innerHTML;
   }
 
-  // 「!!」「!?」「?!」は半角2文字を1マスに収める縦中横表示にする
-  // （左から順に1回の置換で判定し、文字数カウント用の splitCells と区切り方を揃える）
-  function highlightCombined(escapedText) {
-    return escapedText
-      .replace(/!!|!\?|\?!/g, '<span class="tcy">$&</span>');
-  }
-
-  // 半角アルファベットの連続（BBQなど）を検出し、1文字ずつ縦にまっすぐ並ぶよう個別にラップする。
+  // 半角アルファベットの連続（BBQなど）は1文字ずつ縦にまっすぐ並ぶよう個別にラップし、
+  // detectTcy が true のときは縦中横（「!!」「!?」「?!」、ONなら半角数字1〜2桁）も1マスにまとめる。
   // エスケープ後の文字列に対して正規表現をかけると &amp; などの実体参照の中の文字（amp等）を誤って
-  // 拾ってしまうため、エスケープ前の生テキストの段階でLatin runを検出してから個別にエスケープする。
-  const LATIN_RUN_RE = /[A-Za-z]+/g;
-  function renderInlineText(rawText) {
+  // 拾ってしまうため、エスケープ前の生テキストの段階で検出してから個別にエスケープする。
+  // 本文は列に分けた時点で縦中横の単位が決まっている（renderColumn が描画する）ため detectTcy=false で呼ぶ。
+  // ここで改めて判定すると、列の境目で「123」が「12」「3」に分かれたときに「12」を誤って縦中横にしてしまう。
+  const INLINE_RE_WITH_DIGITS = new RegExp('[A-Za-z]+|' + TCY_DIGITS_SRC + '|' + TCY_SYMBOL_SRC, 'gu');
+  const INLINE_RE_NO_DIGITS = new RegExp('[A-Za-z]+|' + TCY_SYMBOL_SRC, 'gu');
+  const INLINE_RE_LATIN_ONLY = /[A-Za-z]+/gu;
+  function renderInlineText(rawText, detectTcy) {
+    const re = !detectTcy ? INLINE_RE_LATIN_ONLY : (tcyDigitsEnabled ? INLINE_RE_WITH_DIGITS : INLINE_RE_NO_DIGITS);
     let html = '';
     let lastIndex = 0;
     let m;
-    LATIN_RUN_RE.lastIndex = 0;
-    while ((m = LATIN_RUN_RE.exec(rawText)) !== null) {
+    re.lastIndex = 0;
+    while ((m = re.exec(rawText)) !== null) {
       if (m.index > lastIndex) {
-        html += highlightCombined(escapeHtml(rawText.slice(lastIndex, m.index)));
+        html += escapeHtml(rawText.slice(lastIndex, m.index));
       }
-      html += '<span class="latin-upright">' + escapeHtml(m[0]) + '</span>';
-      lastIndex = LATIN_RUN_RE.lastIndex;
+      const cls = /^[A-Za-z]/.test(m[0]) ? 'latin-upright' : 'tcy';
+      html += '<span class="' + cls + '">' + escapeHtml(m[0]) + '</span>';
+      lastIndex = re.lastIndex;
     }
     if (lastIndex < rawText.length) {
-      html += highlightCombined(escapeHtml(rawText.slice(lastIndex)));
+      html += escapeHtml(rawText.slice(lastIndex));
     }
     return html;
   }
 
+  // 1列分の単位を HTML にする。傍点は連続する範囲をまとめて1つのspanで囲み、縦中横の単位は個別のspanにする
   function renderColumn(units) {
     let html = '';
+    let groupHtml = '';
     let buffer = '';
-    let bufferEmphasis = false;
-    function flushBuffer() {
+    let groupEmphasis = false;
+    function flushText() {
       if (buffer) {
-        const inner = renderInlineText(buffer);
-        html += bufferEmphasis ? '<span class="bouten">' + inner + '</span>' : inner;
+        groupHtml += renderInlineText(buffer, false);
         buffer = '';
+      }
+    }
+    function flushGroup() {
+      flushText();
+      if (groupHtml) {
+        html += groupEmphasis ? '<span class="bouten">' + groupHtml + '</span>' : groupHtml;
+        groupHtml = '';
       }
     }
     for (const u of units) {
       if (u.kind === 'char') {
-        if (buffer && u.emphasis !== bufferEmphasis) flushBuffer();
-        bufferEmphasis = u.emphasis;
-        buffer += u.text;
+        if ((buffer || groupHtml) && u.emphasis !== groupEmphasis) flushGroup();
+        groupEmphasis = u.emphasis;
+        if (u.tcy) {
+          flushText();
+          groupHtml += '<span class="tcy">' + escapeHtml(u.text) + '</span>';
+        } else {
+          buffer += u.text;
+        }
       } else {
-        flushBuffer();
+        flushGroup();
         html += '<ruby>' + escapeHtml(u.base) + '<rt>' + escapeHtml(u.reading) + '</rt></ruby>';
       }
     }
-    flushBuffer();
+    flushGroup();
     return html;
   }
 
@@ -1136,6 +1165,7 @@
   }
 
   function update() {
+    tcyDigitsEnabled = tcyDigitsEl.checked;
     const raw = stripVariationSelectors(inputEl.value);
     let n = parseInt(lineLengthEl.value, 10);
     if (!Number.isFinite(n) || n < 1) n = 1;
@@ -1165,10 +1195,10 @@
     const titleVal = applyBasicConversions(titleTextEl.value.trim());
     const authorVal = applyBasicConversions(authorTextEl.value.trim());
     if (titleVal) {
-      titleHtml += '<div class="v-line v-title">' + renderInlineText(titleVal) + '</div>';
+      titleHtml += '<div class="v-line v-title">' + renderInlineText(titleVal, true) + '</div>';
     }
     if (authorVal) {
-      titleHtml += '<div class="v-line v-author">' + renderInlineText(authorVal) + '</div>';
+      titleHtml += '<div class="v-line v-author">' + renderInlineText(authorVal, true) + '</div>';
     }
 
     previewEl.innerHTML = titleHtml + columns
@@ -1226,6 +1256,7 @@
     saveToStorage('convertHyphen', convertHyphenEl.checked ? '1' : '0');
     saveToStorage('convertDakuten', convertDakutenEl.checked ? '1' : '0');
     saveToStorage('kinsoku', kinsokuEl.checked ? '1' : '0');
+    saveToStorage('tcyDigits', tcyDigitsEl.checked ? '1' : '0');
     saveToStorage('twoColumnMode', twoColumnModeEl.checked ? '1' : '0');
     saveToStorage('columnsPerRow', columnsPerRowEl.value);
     saveToStorage('linesPerPage', linesPerPageEl.value);
@@ -1273,6 +1304,9 @@
     const savedKinsoku = loadFromStorage('kinsoku');
     if (savedKinsoku !== null) kinsokuEl.checked = savedKinsoku === '1';
 
+    const savedTcyDigits = loadFromStorage('tcyDigits');
+    if (savedTcyDigits !== null) tcyDigitsEl.checked = savedTcyDigits === '1';
+
     const savedTwoCol = loadFromStorage('twoColumnMode');
     if (savedTwoCol !== null) twoColumnModeEl.checked = savedTwoCol === '1';
     columnsPerRowEl.disabled = !twoColumnModeEl.checked;
@@ -1300,7 +1334,7 @@
   }
 
   restoreSettings();
-  [inputEl, titleTextEl, authorTextEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl, convertDakutenEl, kinsokuEl, twoColumnModeEl, columnsPerRowEl, linesPerPageEl].forEach(function (el) {
+  [inputEl, titleTextEl, authorTextEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl, convertDakutenEl, tcyDigitsEl, kinsokuEl, twoColumnModeEl, columnsPerRowEl, linesPerPageEl].forEach(function (el) {
     el.addEventListener('input', scheduleUpdate);
   });
   clipStudioModeRadios.forEach(function (el) {
