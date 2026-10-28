@@ -27,7 +27,7 @@ const SETTING_IDS = {
   columnsPerRow: 'columnsPerRow',
   linesPerPage: 'linesPerPage',
   pageFrames: 'pageFrames',
-  printBookSize: 'printBookSize',
+  printPaper: 'printPaper',
 };
 
 // 既定値: サンプルのタイトル・著者名を消し、画面の既定値（チェックボックスの初期状態など）はそのまま使う

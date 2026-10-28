@@ -41,14 +41,15 @@ const KINSOKU_CASES = [
   ['縦中横の感嘆符の追い出し', 'あいうえおかきくけこ！！', 10, ['あいうえおかきくけこ', '!!'], ['あいうえおかきくけ', 'こ!!']],
   ['開き括弧の行末禁則', 'あいうえおかきくけ（注', 10, ['あいうえおかきくけ（', '注'], ['あいうえおかきくけ', '（注']],
   ['三点リーダー2連は分割しない', 'あいうえおかきく……と', 9, ['あいうえおかきく', '……と'], ['あいうえおかき', 'く……と']],
+  ['連続した数字は分割しない', 'あいうえおかきく2026年', 10, ['あいうえおかきく20', '26年'], ['あいうえおかきく', '2026年']],
   ['読点のぶら下げ', 'あいうえおかきくけこ、「次」', 10, ['あいうえおかきくけこ', '、「次」'], ['あいうえおかきくけこ、', '「次」']],
   ['解決できない連続は機械的に折り返す', 'ーーーーーーーーーーーーー', 10, ['ーーーーーーーーーー', 'ーーー'], ['ーーーーーーーーーー', 'ーーー']],
 ];
 
 for (const [name, text, n, off, on] of KINSOKU_CASES) {
   test('禁則処理: ' + name, () => {
-    assert.deepEqual(cols(text, { lineLength: n, kinsoku: false }), off, 'OFF');
-    assert.deepEqual(cols(text, { lineLength: n, kinsoku: true }), on, 'ON');
+    assert.deepEqual(cols(text, { lineLength: n, kinsoku: false, convertNumbers: false }), off, 'OFF');
+    assert.deepEqual(cols(text, { lineLength: n, kinsoku: true, convertNumbers: false }), on, 'ON');
   });
 }
 

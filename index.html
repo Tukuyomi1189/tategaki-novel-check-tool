@@ -431,6 +431,16 @@
       <input type="checkbox" id="pageFrames">
       1段組みもページ枠で表示する（「1ページの行数」ごと）
     </label>
+    <label>PDF印刷の用紙
+      <select id="printPaper">
+        <option value="a4">A4（判型に合わせない）</option>
+        <option value="bunko">文庫サイズ（A6）</option>
+        <option value="shinsho">新書サイズ</option>
+        <option value="a5">A5判</option>
+        <option value="b6">B6判</option>
+        <option value="b5">B5判</option>
+      </select>
+    </label>
     <label>
       <input type="checkbox" id="clipStudioEnabled">
       クリップスタジオ形式でセリフを抽出する
@@ -452,6 +462,7 @@
   <p class="hint">2段組み:列をA4用紙1ページ分の幅ごとに上下2段へ分けて、本のページのように表示・印刷します。「1段の列数」を指定すると、自動計算の代わりにその列数ごとに次の段へ進みます（空欄なら自動）。</p>
   <p class="hint">1段組みのページ枠: 1段組みのとき、「1ページの行数」ごとに列を区切って本のページのような枠で表示・印刷します（「1ページの行数」が空欄のときは使えません）。タイトル・著者名は1ページ目の先頭の列として数えます。</p>
   <p class="hint">ページ数の目安: 1段組みのとき「1ページの行数」を指定すると、本文の列数（空行も1行として数えます）から大体のページ数を下の文字数欄に表示します（タイトル・著者名は含みません）。2段組みのときは、プレビューのページ数をそのまま表示します。</p>
+  <p class="hint">PDF印刷の用紙: 「A4」以外を選ぶと、「PDFとして印刷」をその判型の用紙サイズ（文庫 105×148mm、新書 103×182mm、A5 148×210mm、B6 128×182mm、B5 182×257mm）で出力します。1列に「1行の文字数」＋1字（ぶら下げ分）が収まるよう文字の大きさを自動で決め、1ページの列数が決まっているとき（1段組みのページ枠・2段組みの「1段の列数」）は横幅にも収まるよう調整します。「同人誌サイズ」の選択とは独立しているので、「1行の文字数」を自由に変えても用紙は変わりません。</p>
   <p class="hint">原稿ファイルと同期: VS Code の Live Preview などローカルサーバー経由で開いているとき、このフォルダの「原稿.txt」を約1秒ごとに読み込み、変更があれば入力欄へ自動で流し込みます。同期中は入力欄を直接編集できません（原稿.txt 側を編集・保存してください）。ファイルを直接開いた場合（file://）は使えません。</p>
   <p class="hint">入力内容と各設定は、このブラウザ内（localStorage）に自動保存されます。ページを再読み込みしても消えません（他の端末やサーバーには送信されません）。</p>
 
@@ -522,6 +533,7 @@
   const tcyDigitsEl = document.getElementById('tcyDigits');
   const pageBreakEl = document.getElementById('pageBreak');
   const pageFramesEl = document.getElementById('pageFrames');
+  const printPaperEl = document.getElementById('printPaper');
   const twoColumnModeEl = document.getElementById('twoColumnMode');
   const columnsPerRowEl = document.getElementById('columnsPerRow');
   const linesPerPageEl = document.getElementById('linesPerPage');
@@ -777,6 +789,11 @@
   }
   function isHeadNG(u) { return u !== undefined && KINSOKU_HEAD.has(unitHeadChar(u)); }
   function isTailNG(u) { return u !== undefined && KINSOKU_TAIL.has(unitTailChar(u)); }
+  // 分割禁止: 連続した数字（「2026」など）の途中では列を分けない
+  const DIGIT_RE = /^[0-9０-９]$/;
+  function isDigitPair(prev, next) {
+    return prev !== undefined && next !== undefined && DIGIT_RE.test(unitTailChar(prev)) && DIGIT_RE.test(unitHeadChar(next));
+  }
   function isHangable(u) { return u.kind === 'char' && u.len === 1 && KINSOKU_HANG.has(unitHeadChar(u)); }
 
   // 追い出し: current の後ろから何単位を次の列へ送れば禁則に触れないかを探し、current に残す単位数を返す。
@@ -785,7 +802,7 @@
     const minK = Math.max(1, current.length - KINSOKU_MAX_PUSHBACK);
     for (let k = current.length; k >= minK; k--) {
       const head = k < current.length ? current[k] : next;
-      if (!isHeadNG(head) && !isTailNG(current[k - 1])) return k;
+      if (!isHeadNG(head) && !isTailNG(current[k - 1]) && !isDigitPair(current[k - 1], head)) return k;
     }
     return current.length;
   }
@@ -999,6 +1016,66 @@
 
   // A4・余白1.5cmを想定した印刷可能幅(px)。画面の2段組み表示もこの幅を基準に合わせている。
   const PAGE_WIDTH_PX = 640;
+
+  // 「判型サイズで印刷」の用紙サイズと余白(mm)。キーは「同人誌サイズ」の選択肢
+  const BOOK_SIZES = {
+    bunko: { width: 105, height: 148, margin: 10 },
+    shinsho: { width: 103, height: 182, margin: 10 },
+    a5: { width: 148, height: 210, margin: 15 },
+    b6: { width: 128, height: 182, margin: 12 },
+    b5: { width: 182, height: 257, margin: 18 },
+  };
+  const PX_PER_MM = 96 / 25.4;
+  const LINE_HEIGHT_EM = 1.9; // .v-line の line-height（列の幅＝文字の大きさ×これ）
+  const TITLE_SCALE = 2 / 1.3; // .v-title / .v-line の文字の大きさの比
+  const AUTHOR_SCALE = 1 / 1.3; // .v-author / .v-line の文字の大きさの比
+  const ROW_GAP_PX = 24; // 2段組みの段と段の間（段の間隔＋区切り線の余白）
+  const MIN_FONT_PX = 6;
+
+  // 判型サイズで印刷するときの文字の大きさ・1段に並べられる幅を計算する。
+  // - 1列に「1行の文字数」＋1字（ぶら下げ分）が収まる大きさにする
+  // - 1段の列数が決まっているとき（columnsPerRow > 0）は、その列数が横幅に収まる大きさとの小さい方にする
+  // - 列の並べ方を実際の幅で決めるときの基準幅は、A4のとき（680pxに対して640px）と同じ比率で少し余裕を持たせる
+  function computeBookPrintMetrics(size, charsPerColumn, rowsPerPage, columnsPerRow, gapPx) {
+    const printableWidthPx = (size.width - size.margin * 2) * PX_PER_MM;
+    const printableHeightPx = (size.height - size.margin * 2) * PX_PER_MM;
+    const rowHeightPx = (printableHeightPx - ROW_GAP_PX * (rowsPerPage - 1)) / rowsPerPage;
+    let fontPx = rowHeightPx / (charsPerColumn + 1);
+    if (columnsPerRow > 0) {
+      const byWidth = (printableWidthPx * 0.98 - gapPx * (columnsPerRow - 1)) / (columnsPerRow * LINE_HEIGHT_EM);
+      fontPx = Math.min(fontPx, byWidth);
+    }
+    fontPx = Math.max(MIN_FONT_PX, Math.floor(fontPx * 10) / 10);
+    return {
+      fontPx: fontPx,
+      pageWidthPx: Math.floor(printableWidthPx * (640 / 680)),
+      pageCss: '@page{size:' + size.width + 'mm ' + size.height + 'mm;margin:' + size.margin + 'mm;}',
+    };
+  }
+
+  // 判型サイズで印刷するときの用紙・文字の大きさを、印刷の直前にスタイルとして差し込む（印刷後に取り除く）。
+  // 文字の大きさを先に変えてから列の幅を測らないと、ページの分け方が印刷結果とずれるため、画面にも一時的に反映される。
+  const BOOK_SIZE_STYLE_ID = 'bookSizePrintStyle';
+  function applyBookSizePrintStyle(rowsPerPage, columnsPerRow) {
+    const size = BOOK_SIZES[printPaperEl.value];
+    if (!size) return null;
+    let n = parseInt(lineLengthEl.value, 10);
+    if (!Number.isFinite(n) || n < 1) n = 1;
+    const gapPx = parseFloat(getComputedStyle(previewEl).columnGap) || 0;
+    const metrics = computeBookPrintMetrics(size, n, rowsPerPage, columnsPerRow, gapPx);
+    const style = document.createElement('style');
+    style.id = BOOK_SIZE_STYLE_ID;
+    style.textContent = metrics.pageCss +
+      '.v-line{font-size:' + metrics.fontPx + 'px;}' +
+      '.v-line.v-title{font-size:' + (metrics.fontPx * TITLE_SCALE).toFixed(1) + 'px;}' +
+      '.v-line.v-author{font-size:' + (metrics.fontPx * AUTHOR_SCALE).toFixed(1) + 'px;}';
+    document.head.appendChild(style);
+    return metrics;
+  }
+  function removeBookSizePrintStyle() {
+    const style = document.getElementById(BOOK_SIZE_STYLE_ID);
+    if (style) style.remove();
+  }
 
   // 改ページ記法で区切られた部分ごとに、列数を1ページの行数で割って切り上げ、合計したページ数
   function estimatePageCount(columnCount, pageBreaks, linesPerPage) {
@@ -1348,6 +1425,7 @@
     saveToStorage('columnsPerRow', columnsPerRowEl.value);
     saveToStorage('linesPerPage', linesPerPageEl.value);
     saveToStorage('pageFrames', pageFramesEl.checked ? '1' : '0');
+    saveToStorage('printPaper', printPaperEl.value);
     saveToStorage('clipStudioEnabled', clipStudioEnabledEl.checked ? '1' : '0');
     const checkedRadio = document.querySelector('input[name="clipStudioMode"]:checked');
     saveToStorage('clipStudioMode', checkedRadio ? checkedRadio.value : 'vertical');
@@ -1413,6 +1491,11 @@
     const savedPageFrames = loadFromStorage('pageFrames');
     if (savedPageFrames !== null) pageFramesEl.checked = savedPageFrames === '1';
 
+    const savedPrintPaper = loadFromStorage('printPaper');
+    if (savedPrintPaper !== null && (savedPrintPaper === 'a4' || BOOK_SIZES[savedPrintPaper])) {
+      printPaperEl.value = savedPrintPaper;
+    }
+
     const savedClipEnabled = loadFromStorage('clipStudioEnabled');
     if (savedClipEnabled !== null) {
       clipStudioEnabledEl.checked = savedClipEnabled === '1';
@@ -1448,6 +1531,7 @@
     }
   });
   rubyFormatEl.addEventListener('change', scheduleUpdate);
+  printPaperEl.addEventListener('change', persistSettings);
   // 1行の文字数をプリセットと違う値に手動で変更したら、選択を「カスタム」に戻す
   lineLengthEl.addEventListener('input', function () {
     const preset = PAGE_SIZE_PRESETS[pageSizePresetEl.value];
@@ -1528,7 +1612,10 @@
     const rowsPerPage = twoColumnModeEl.checked ? 2 : 1;
     // 1段組みのページ枠が有効なら、画面と同じく「1ページの行数」ごとにページを分ける
     const columnsPerRow = twoColumnModeEl.checked ? getColumnsPerRow() : (oneColumnFramesActive() ? getLinesPerPage() : 0);
-    const pages = groupLinesIntoPages(lines, PAGE_WIDTH_PX, rowsPerPage, columnsPerRow);
+    // 判型サイズで印刷するなら、文字の大きさを変えてから（＝印刷時と同じ列の幅で）ページを分ける
+    const bookMetrics = applyBookSizePrintStyle(rowsPerPage, columnsPerRow);
+    const pageWidthPx = bookMetrics ? bookMetrics.pageWidthPx : PAGE_WIDTH_PX;
+    const pages = groupLinesIntoPages(lines, pageWidthPx, rowsPerPage, columnsPerRow);
     wrapLinesIntoPageDom(pages, 'print-page');
     printPaginated = true;
   }
@@ -1537,6 +1624,7 @@
   function restorePrintPages() {
     if (!printPaginated) return;
     printPaginated = false;
+    removeBookSizePrintStyle();
     update();
   }
 
@@ -1683,6 +1771,8 @@
     preparePrintPages: preparePrintPages,
     restorePrintPages: restorePrintPages,
     getLastColumns: function () { return lastColumns; },
+    computeBookPrintMetrics: computeBookPrintMetrics,
+    BOOK_SIZES: BOOK_SIZES,
   };
 })();
 </script>
