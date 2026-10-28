@@ -428,6 +428,10 @@
       <input type="number" id="linesPerPage" min="1" placeholder="未指定">
     </label>
     <label>
+      <input type="checkbox" id="pageFrames">
+      1段組みもページ枠で表示する（「1ページの行数」ごと）
+    </label>
+    <label>
       <input type="checkbox" id="clipStudioEnabled">
       クリップスタジオ形式でセリフを抽出する
     </label>
@@ -446,6 +450,7 @@
   <p class="hint">禁則処理: 列の先頭に「。」「」」「っ」「ー」などが、列の末尾に「「」「（」などが来ないように折り返し位置を調整します。「、」「。」は1文字だけ列の下にはみ出させ（ぶら下げ）、それ以外は前の列の文字を次の列へ送ります（追い出し）。「……」「――」の2連と縦中横の「!!」などは途中で分割しません。プレビュー上の折り返しのみに影響し、コピー用テキストは変わりません。</p>
   <p class="hint">改ページ: 「［＃改ページ］」（青空文庫）または「[newpage]」（pixiv）だけを書いた行で、次のページから始めます。2段組み・印刷では次のページへ送り、1段組みのプレビューでは区切り線を表示します。コピー用テキストとテキストダウンロードでは「ルビの出力形式」に合わせた記法に揃えます。</p>
   <p class="hint">2段組み:列をA4用紙1ページ分の幅ごとに上下2段へ分けて、本のページのように表示・印刷します。「1段の列数」を指定すると、自動計算の代わりにその列数ごとに次の段へ進みます（空欄なら自動）。</p>
+  <p class="hint">1段組みのページ枠: 1段組みのとき、「1ページの行数」ごとに列を区切って本のページのような枠で表示・印刷します（「1ページの行数」が空欄のときは使えません）。タイトル・著者名は1ページ目の先頭の列として数えます。</p>
   <p class="hint">ページ数の目安: 1段組みのとき「1ページの行数」を指定すると、本文の列数（空行も1行として数えます）から大体のページ数を下の文字数欄に表示します（タイトル・著者名は含みません）。2段組みのときは、プレビューのページ数をそのまま表示します。</p>
   <p class="hint">原稿ファイルと同期: VS Code の Live Preview などローカルサーバー経由で開いているとき、このフォルダの「原稿.txt」を約1秒ごとに読み込み、変更があれば入力欄へ自動で流し込みます。同期中は入力欄を直接編集できません（原稿.txt 側を編集・保存してください）。ファイルを直接開いた場合（file://）は使えません。</p>
   <p class="hint">入力内容と各設定は、このブラウザ内（localStorage）に自動保存されます。ページを再読み込みしても消えません（他の端末やサーバーには送信されません）。</p>
@@ -516,6 +521,7 @@
   const kinsokuEl = document.getElementById('kinsoku');
   const tcyDigitsEl = document.getElementById('tcyDigits');
   const pageBreakEl = document.getElementById('pageBreak');
+  const pageFramesEl = document.getElementById('pageFrames');
   const twoColumnModeEl = document.getElementById('twoColumnMode');
   const columnsPerRowEl = document.getElementById('columnsPerRow');
   const linesPerPageEl = document.getElementById('linesPerPage');
@@ -1055,6 +1061,11 @@
     return Number.isFinite(v) && v > 0 ? v : 0;
   }
 
+  // 1段組みのページ枠表示が有効か（2段組みでなく、チェックが入っていて、1ページの行数が指定されている）
+  function oneColumnFramesActive() {
+    return !twoColumnModeEl.checked && pageFramesEl.checked && getLinesPerPage() > 0;
+  }
+
   function getLinesPerPage() {
     const v = parseInt(linesPerPageEl.value, 10);
     return Number.isFinite(v) && v > 0 ? v : 0;
@@ -1104,6 +1115,15 @@
     const lines = Array.from(previewEl.querySelectorAll('.v-line'));
     if (lines.length === 0) return;
     const pages = groupLinesIntoPages(lines, PAGE_WIDTH_PX, 2, getColumnsPerRow());
+    wrapLinesIntoPageDom(pages, 'preview-page');
+    equalizePageSizes();
+  }
+
+  // 画面プレビューを1段組みのページ枠（1ページ=「1ページの行数」の列）に組み直す
+  function applyOneColumnFrames() {
+    const lines = Array.from(previewEl.querySelectorAll('.v-line'));
+    if (lines.length === 0) return;
+    const pages = groupLinesIntoPages(lines, PAGE_WIDTH_PX, 1, getLinesPerPage());
     wrapLinesIntoPageDom(pages, 'preview-page');
     equalizePageSizes();
   }
@@ -1266,11 +1286,15 @@
       .join('');
     if (twoColumnModeEl.checked) {
       applyTwoColumnLayout();
+    } else if (oneColumnFramesActive()) {
+      applyOneColumnFrames();
     }
 
     let statsText = '総文字数: ' + totalChars + '字　／　列数: ' + columns.length + '列（1列 ' + n + '字）';
     if (twoColumnModeEl.checked) {
       statsText += '　／　' + previewEl.querySelectorAll('.preview-page').length + 'ページ';
+    } else if (oneColumnFramesActive()) {
+      statsText += '　／　' + previewEl.querySelectorAll('.preview-page').length + 'ページ（1ページ ' + getLinesPerPage() + '行）';
     } else {
       // 1段組みは「1ページの行数」が指定されていれば、本文の列数（空行を含む）を1ページあたりの行数で割って目安を出す。
       // タイトル・著者名は扉ページなど別扱いになることが多いため数えない
@@ -1323,6 +1347,7 @@
     saveToStorage('twoColumnMode', twoColumnModeEl.checked ? '1' : '0');
     saveToStorage('columnsPerRow', columnsPerRowEl.value);
     saveToStorage('linesPerPage', linesPerPageEl.value);
+    saveToStorage('pageFrames', pageFramesEl.checked ? '1' : '0');
     saveToStorage('clipStudioEnabled', clipStudioEnabledEl.checked ? '1' : '0');
     const checkedRadio = document.querySelector('input[name="clipStudioMode"]:checked');
     saveToStorage('clipStudioMode', checkedRadio ? checkedRadio.value : 'vertical');
@@ -1377,12 +1402,16 @@
     if (savedTwoCol !== null) twoColumnModeEl.checked = savedTwoCol === '1';
     columnsPerRowEl.disabled = !twoColumnModeEl.checked;
     linesPerPageEl.disabled = twoColumnModeEl.checked;
+    pageFramesEl.disabled = twoColumnModeEl.checked;
 
     const savedColsPerRow = loadFromStorage('columnsPerRow');
     if (savedColsPerRow !== null) columnsPerRowEl.value = savedColsPerRow;
 
     const savedLinesPerPage = loadFromStorage('linesPerPage');
     if (savedLinesPerPage !== null) linesPerPageEl.value = savedLinesPerPage;
+
+    const savedPageFrames = loadFromStorage('pageFrames');
+    if (savedPageFrames !== null) pageFramesEl.checked = savedPageFrames === '1';
 
     const savedClipEnabled = loadFromStorage('clipStudioEnabled');
     if (savedClipEnabled !== null) {
@@ -1400,7 +1429,7 @@
   }
 
   restoreSettings();
-  [inputEl, titleTextEl, authorTextEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl, convertDakutenEl, tcyDigitsEl, pageBreakEl, kinsokuEl, twoColumnModeEl, columnsPerRowEl, linesPerPageEl].forEach(function (el) {
+  [inputEl, titleTextEl, authorTextEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl, convertDakutenEl, tcyDigitsEl, pageBreakEl, kinsokuEl, twoColumnModeEl, columnsPerRowEl, linesPerPageEl, pageFramesEl].forEach(function (el) {
     el.addEventListener('input', scheduleUpdate);
   });
   clipStudioModeRadios.forEach(function (el) {
@@ -1409,6 +1438,7 @@
   twoColumnModeEl.addEventListener('input', function () {
     columnsPerRowEl.disabled = !twoColumnModeEl.checked;
     linesPerPageEl.disabled = twoColumnModeEl.checked;
+    pageFramesEl.disabled = twoColumnModeEl.checked;
   });
   pageSizePresetEl.addEventListener('change', function () {
     const preset = PAGE_SIZE_PRESETS[pageSizePresetEl.value];
@@ -1496,7 +1526,9 @@
     const lines = Array.from(previewEl.querySelectorAll('.v-line'));
     if (lines.length === 0) return;
     const rowsPerPage = twoColumnModeEl.checked ? 2 : 1;
-    const pages = groupLinesIntoPages(lines, PAGE_WIDTH_PX, rowsPerPage, getColumnsPerRow());
+    // 1段組みのページ枠が有効なら、画面と同じく「1ページの行数」ごとにページを分ける
+    const columnsPerRow = twoColumnModeEl.checked ? getColumnsPerRow() : (oneColumnFramesActive() ? getLinesPerPage() : 0);
+    const pages = groupLinesIntoPages(lines, PAGE_WIDTH_PX, rowsPerPage, columnsPerRow);
     wrapLinesIntoPageDom(pages, 'print-page');
     printPaginated = true;
   }
