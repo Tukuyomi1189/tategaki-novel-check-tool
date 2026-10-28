@@ -27,6 +27,7 @@ const SETTING_IDS = {
   columnsPerRow: 'columnsPerRow',
   linesPerPage: 'linesPerPage',
   pageFrames: 'pageFrames',
+  fitPreview: 'fitPreview',
   printPaper: 'printPaper',
 };
 

@@ -127,7 +127,8 @@
   .v-line {
     writing-mode: vertical-rl;
     white-space: pre;
-    font-size: 1.3rem;
+    /* 「プレビューの文字の大きさを欄の高さに合わせる」が ON のときは、#verticalPreview に --v-font-size が設定される */
+    font-size: var(--v-font-size, 1.3rem);
     line-height: 1.9;
     font-family: "游明朝", "Yu Mincho", "Hiragino Mincho ProN", "MS PMincho", serif;
     flex: none;
@@ -142,13 +143,13 @@
     border-right: 2px dashed var(--accent);
   }
   .v-title {
-    font-size: 2rem;
+    font-size: calc(var(--v-font-size, 1.3rem) * 2 / 1.3);
     font-weight: 700;
     letter-spacing: 0.2em;
     margin-right: 0.3em;
   }
   .v-author {
-    font-size: 1rem;
+    font-size: calc(var(--v-font-size, 1.3rem) / 1.3);
     margin-right: 0.6em;
   }
   .page-row {
@@ -197,6 +198,17 @@
     margin-top: 0.6rem;
     font-size: 0.85rem;
     opacity: 0.7;
+  }
+  /* 設定欄: 折りたためるようにする（スマホでは既定で閉じる） */
+  .settings > summary {
+    cursor: pointer;
+    font-weight: 600;
+    padding: 0.2rem 0;
+    margin-bottom: 0.5rem;
+  }
+  /* 出力ボタン: スマホでは短い表記にして1行に収める */
+  .label-short {
+    display: none;
   }
   /* 使い方の説明: 全体を1つの折りたたみにし、中の各項目も見出しだけを並べて個別に開けるようにする */
   .hints {
@@ -340,9 +352,19 @@
   }
   @media (max-width: 800px) {
     .panes { grid-template-columns: 1fr; }
+    body { padding: 0.75rem; }
+    /* プレビュー欄を縦に広く取り、1列の文字を大きく表示できるようにする（dvh はアドレスバーの伸び縮みを考慮した高さ） */
+    .vertical-preview {
+      height: 75vh;
+      height: 75dvh;
+    }
+    .label-long { display: none; }
+    .label-short { display: inline; }
+    .export-buttons { gap: 0.4rem; }
+    .export-buttons button { padding: 0.35em 0.6em; }
   }
   @media print {
-    h1, .controls, .hints, .pane-header, .stats,
+    h1, .settings, .controls, .hints, .pane-header, .stats,
     .panes > .pane:not(.full), #clipStudioPane {
       display: none !important;
     }
@@ -382,6 +404,8 @@
 <body>
   <h1>縦書き小説チェックツール</h1>
 
+  <details class="settings" id="settings" open>
+  <summary>設定</summary>
   <div class="controls">
     <label>タイトル
       <input type="text" id="titleText" placeholder="（任意）" class="text-input">
@@ -447,6 +471,10 @@
       <input type="number" id="linesPerPage" min="1" placeholder="未指定">
     </label>
     <label>
+      <input type="checkbox" id="fitPreview">
+      プレビューの文字の大きさを欄の高さに合わせる
+    </label>
+    <label>
       <input type="checkbox" id="pageFrames">
       1段組みもページ枠で表示する（「1ページの行数」ごと）
     </label>
@@ -470,6 +498,7 @@
       <span id="fileSyncStatus" class="sync-status"></span>
     </label>
   </div>
+  </details>
   <details class="hints" id="hints">
     <summary>使い方の説明</summary>
     <details class="hint-item">
@@ -507,6 +536,10 @@
     <details class="hint-item">
       <summary>2段組み</summary>
       <p class="hint">列をA4用紙1ページ分の幅ごとに上下2段へ分けて、本のページのように表示・印刷します。「1段の列数」を指定すると、自動計算の代わりにその列数ごとに次の段へ進みます（空欄なら自動）。</p>
+    </details>
+    <details class="hint-item">
+      <summary>文字の大きさ調整</summary>
+      <p class="hint">「プレビューの文字の大きさを欄の高さに合わせる」を ON にすると、1列（「1行の文字数」＋ぶら下げ分の1字）がプレビュー欄の高さにちょうど収まるよう、縦書きプレビューの文字を小さくします（通常より大きくはしません）。縦にスクロールしなくても列の最後まで読めるようになります。2段組み・ページ枠のときは、ページの枠ごと収まる大きさにします。スマホなど幅の狭い画面では、最初から ON になっています。プレビュー欄の大きさを変えると自動で計算し直します。画面のプレビューだけの調整で、HTML保存・PDF印刷の文字の大きさは変わりません。</p>
     </details>
     <details class="hint-item">
       <summary>1段組みのページ枠</summary>
@@ -567,9 +600,9 @@
       <div class="pane-header">
         <h2>縦書きプレビュー</h2>
         <div class="export-buttons">
-          <button type="button" id="exportTxt">テキストとしてダウンロード</button>
-          <button type="button" id="exportHtml">HTMLとして保存</button>
-          <button type="button" id="exportPdf">PDFとして印刷</button>
+          <button type="button" id="exportTxt" aria-label="テキストとしてダウンロード"><span class="label-long">テキストとしてダウンロード</span><span class="label-short">テキスト保存</span></button>
+          <button type="button" id="exportHtml" aria-label="HTMLとして保存"><span class="label-long">HTMLとして保存</span><span class="label-short">HTML保存</span></button>
+          <button type="button" id="exportPdf" aria-label="PDFとして印刷"><span class="label-long">PDFとして印刷</span><span class="label-short">PDF印刷</span></button>
         </div>
       </div>
       <div id="verticalPreview" class="vertical-preview"></div>
@@ -597,6 +630,8 @@
   const tcyDigitsEl = document.getElementById('tcyDigits');
   const pageBreakEl = document.getElementById('pageBreak');
   const pageFramesEl = document.getElementById('pageFrames');
+  const fitPreviewEl = document.getElementById('fitPreview');
+  const settingsEl = document.getElementById('settings');
   const printPaperEl = document.getElementById('printPaper');
   const twoColumnModeEl = document.getElementById('twoColumnMode');
   const columnsPerRowEl = document.getElementById('columnsPerRow');
@@ -1269,6 +1304,46 @@
     equalizePageSizes();
   }
 
+  // スマホなど幅の狭い画面か（「欄の高さに合わせる」の既定 ON、設定欄の既定で閉じる判定に使う）
+  function isNarrowScreen() {
+    return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 800px)').matches;
+  }
+
+  // 「プレビューの文字の大きさを欄の高さに合わせる」: 1列に必要な高さ（文字の大きさ×units）が
+  // 使える高さ availablePx に収まる文字の大きさ(px)を返す。通常の大きさ maxPx より大きくはしない。
+  const FIT_MIN_FONT_PX = 8;
+  function computeFitFontPx(availablePx, units, maxPx) {
+    if (!(availablePx > 0) || !(units > 0)) return null;
+    const px = Math.floor((availablePx / units) * 10) / 10;
+    return Math.max(FIT_MIN_FONT_PX, Math.min(maxPx, px));
+  }
+  // ページ枠（.preview-page）の内側の余白・枠線・段の区切りの分として、文字に使えない高さ(px)
+  const FIT_FRAME_EXTRA_PX = { 1: 26, 2: 52 };
+
+  // プレビューの文字の大きさを決めて #verticalPreview に --v-font-size として設定する（OFFなら外して通常の大きさに戻す）
+  function applyFitFontSize(n, titleVal, authorVal) {
+    previewEl.style.removeProperty('--v-font-size');
+    if (!fitPreviewEl.checked) return;
+    const cs = getComputedStyle(previewEl);
+    const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    const maxPx = rootPx * 1.3;
+    // 欄の高さから上下の余白と、横スクロールバー・誤差の分を引く
+    let availablePx = previewEl.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0) - 6;
+    let rows = 1;
+    if (twoColumnModeEl.checked || oneColumnFramesActive()) {
+      rows = twoColumnModeEl.checked ? 2 : 1;
+      availablePx = (availablePx - FIT_FRAME_EXTRA_PX[rows]) / rows;
+    }
+    // 1列は「1行の文字数」＋ぶら下げ分の1字。タイトル・著者名は文字が大きい（タイトルは字間も広い）分を見込む
+    const units = Math.max(
+      n + 1,
+      Array.from(titleVal).length * (TITLE_SCALE * 1.2),
+      Array.from(authorVal).length * AUTHOR_SCALE
+    );
+    const px = computeFitFontPx(availablePx, units, maxPx);
+    if (px !== null && px < maxPx) previewEl.style.setProperty('--v-font-size', px + 'px');
+  }
+
   let debounceTimer = null;
   function scheduleUpdate() {
     clearTimeout(debounceTimer);
@@ -1422,6 +1497,7 @@
       titleHtml += '<div class="v-line v-author">' + renderInlineText(authorVal, true) + '</div>';
     }
 
+    applyFitFontSize(n, titleVal, authorVal);
     previewEl.innerHTML = titleHtml + columns
       .map((col, i) => '<div class="v-line"' + (pageBreaks.has(i) ? ' data-page-break="1"' : '') + '>' + renderColumn(col) + '</div>')
       .join('');
@@ -1489,6 +1565,7 @@
     saveToStorage('columnsPerRow', columnsPerRowEl.value);
     saveToStorage('linesPerPage', linesPerPageEl.value);
     saveToStorage('pageFrames', pageFramesEl.checked ? '1' : '0');
+    saveToStorage('fitPreview', fitPreviewEl.checked ? '1' : '0');
     saveToStorage('printPaper', printPaperEl.value);
     saveToStorage('clipStudioEnabled', clipStudioEnabledEl.checked ? '1' : '0');
     const checkedRadio = document.querySelector('input[name="clipStudioMode"]:checked');
@@ -1552,6 +1629,10 @@
     const savedLinesPerPage = loadFromStorage('linesPerPage');
     if (savedLinesPerPage !== null) linesPerPageEl.value = savedLinesPerPage;
 
+    // 「欄の高さに合わせる」は保存された値がなければ、スマホなど幅の狭い画面でだけ ON にする
+    const savedFit = loadFromStorage('fitPreview');
+    fitPreviewEl.checked = savedFit !== null ? savedFit === '1' : isNarrowScreen();
+
     const savedPageFrames = loadFromStorage('pageFrames');
     if (savedPageFrames !== null) pageFramesEl.checked = savedPageFrames === '1';
 
@@ -1578,12 +1659,30 @@
   restoreSettings();
 
   // 「使い方の説明」の開閉状態を覚えておく（既定は閉じた状態）。中の各項目の開閉は保存しない
+  // 設定欄の開閉状態を覚えておく。保存された値がなければ、幅の狭い画面では閉じ、それ以外では開いておく
+  const savedSettingsOpen = loadFromStorage('settingsOpen');
+  settingsEl.open = savedSettingsOpen !== null ? savedSettingsOpen === '1' : !isNarrowScreen();
+  settingsEl.addEventListener('toggle', function () {
+    saveToStorage('settingsOpen', settingsEl.open ? '1' : '0');
+  });
+
+  // プレビュー欄の高さが変わったら（画面の回転、欄の大きさの変更など）、文字の大きさを計算し直す
+  if (typeof ResizeObserver === 'function') {
+    let lastPreviewHeight = previewEl.clientHeight;
+    new ResizeObserver(function () {
+      const h = previewEl.clientHeight;
+      if (Math.abs(h - lastPreviewHeight) < 2) return;
+      lastPreviewHeight = h;
+      if (fitPreviewEl.checked && !printPaginated) scheduleUpdate();
+    }).observe(previewEl);
+  }
+
   const hintsEl = document.getElementById('hints');
   hintsEl.open = loadFromStorage('hintsOpen') === '1';
   hintsEl.addEventListener('toggle', function () {
     saveToStorage('hintsOpen', hintsEl.open ? '1' : '0');
   });
-  [inputEl, titleTextEl, authorTextEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl, convertDakutenEl, tcyDigitsEl, pageBreakEl, kinsokuEl, twoColumnModeEl, columnsPerRowEl, linesPerPageEl, pageFramesEl].forEach(function (el) {
+  [inputEl, titleTextEl, authorTextEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl, convertDakutenEl, tcyDigitsEl, pageBreakEl, kinsokuEl, twoColumnModeEl, columnsPerRowEl, linesPerPageEl, pageFramesEl, fitPreviewEl].forEach(function (el) {
     el.addEventListener('input', scheduleUpdate);
   });
   clipStudioModeRadios.forEach(function (el) {
@@ -1680,6 +1779,8 @@
   function preparePrintPages() {
     const lines = Array.from(previewEl.querySelectorAll('.v-line'));
     if (lines.length === 0) return;
+    // 画面用の「欄の高さに合わせる」文字の大きさは印刷には使わない（印刷後の update() で戻る）
+    previewEl.style.removeProperty('--v-font-size');
     const rowsPerPage = twoColumnModeEl.checked ? 2 : 1;
     // 1段組みのページ枠が有効なら、画面と同じく「1ページの行数」ごとにページを分ける
     const columnsPerRow = twoColumnModeEl.checked ? getColumnsPerRow() : (oneColumnFramesActive() ? getLinesPerPage() : 0);
@@ -1843,6 +1944,7 @@
     restorePrintPages: restorePrintPages,
     getLastColumns: function () { return lastColumns; },
     computeBookPrintMetrics: computeBookPrintMetrics,
+    computeFitFontPx: computeFitFontPx,
     BOOK_SIZES: BOOK_SIZES,
   };
 })();
