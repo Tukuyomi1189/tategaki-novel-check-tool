@@ -1,0 +1,14 @@
+{
+  "name": "tategaki-novel-check-tool",
+  "private": true,
+  "description": "縦書き小説チェックツールの自動テスト用（ツール本体は index.html 単体で動作し、このファイルは不要）",
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

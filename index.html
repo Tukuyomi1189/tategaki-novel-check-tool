@@ -135,6 +135,12 @@
   .v-line:empty {
     min-width: 1em;
   }
+  /* 改ページ記法の位置（ページ枠に分けない表示のときだけ、区切り線で示す） */
+  .vertical-preview > .v-line[data-page-break] {
+    margin-right: 0.8em;
+    padding-right: 0.8em;
+    border-right: 2px dashed var(--accent);
+  }
   .v-title {
     font-size: 2rem;
     font-weight: 700;
@@ -192,10 +198,29 @@
     font-size: 0.85rem;
     opacity: 0.7;
   }
-  .hint {
-    font-size: 0.82rem;
-    opacity: 0.7;
+  /* 使い方の説明: 全体を1つの折りたたみにし、中の各項目も見出しだけを並べて個別に開けるようにする */
+  .hints {
     margin: -0.5rem 0 1rem;
+    font-size: 0.82rem;
+  }
+  .hints > summary {
+    cursor: pointer;
+    opacity: 0.8;
+    font-weight: 600;
+    padding: 0.2rem 0;
+  }
+  .hint-item {
+    margin-left: 1rem;
+  }
+  .hint-item > summary {
+    cursor: pointer;
+    opacity: 0.8;
+    padding: 0.15rem 0;
+  }
+  .hint {
+    opacity: 0.7;
+    margin: 0.1rem 0 0.5rem 1rem;
+    line-height: 1.6;
   }
   .sync-status {
     font-size: 0.8rem;
@@ -317,7 +342,7 @@
     .panes { grid-template-columns: 1fr; }
   }
   @media print {
-    h1, .controls, .hint, .pane-header, .stats,
+    h1, .controls, .hints, .pane-header, .stats,
     .panes > .pane:not(.full), #clipStudioPane {
       display: none !important;
     }
@@ -396,8 +421,20 @@
       ハイフン(-)を長音記号(ー)に変換する
     </label>
     <label>
+      <input type="checkbox" id="convertDakuten" checked>
+      濁点・半濁点（゛゜ﾞﾟ）を直前の文字に結合する（あ゛→あ゙）
+    </label>
+    <label>
+      <input type="checkbox" id="tcyDigits" checked>
+      半角数字2桁までを縦中横にする（23→1マス）
+    </label>
+    <label>
       <input type="checkbox" id="kinsoku" checked>
       禁則処理を行う（句読点のぶら下げ・行頭／行末禁則の追い出し）
+    </label>
+    <label>
+      <input type="checkbox" id="pageBreak" checked>
+      改ページ記法（［＃改ページ］／[newpage]）を反映する
     </label>
     <label>
       <input type="checkbox" id="twoColumnMode">
@@ -410,6 +447,20 @@
       <input type="number" id="linesPerPage" min="1" placeholder="未指定">
     </label>
     <label>
+      <input type="checkbox" id="pageFrames">
+      1段組みもページ枠で表示する（「1ページの行数」ごと）
+    </label>
+    <label>PDF印刷の用紙
+      <select id="printPaper">
+        <option value="a4">A4（判型に合わせない）</option>
+        <option value="bunko">文庫サイズ（A6）</option>
+        <option value="shinsho">新書サイズ</option>
+        <option value="a5">A5判</option>
+        <option value="b6">B6判</option>
+        <option value="b5">B5判</option>
+      </select>
+    </label>
+    <label>
       <input type="checkbox" id="clipStudioEnabled">
       クリップスタジオ形式でセリフを抽出する
     </label>
@@ -419,16 +470,65 @@
       <span id="fileSyncStatus" class="sync-status"></span>
     </label>
   </div>
-  <p class="hint">タイトル・著者名を入力すると、縦書きプレビューの一番右（先頭）に大きめの文字で表示されます（どちらも空欄なら表示されません）。テキスト・HTML出力や印刷にも反映されます。</p>
-  <p class="hint">同人誌サイズ: 選択すると「1行の文字数」を判型ごとの目安に自動設定します。フォントサイズや余白で最適な字数は変わるため、あくまで目安です。「1行の文字数」を直接編集すると自動的に「カスタム」に戻ります。</p>
-  <p class="hint">ルビ: 「本気《マジ》」のように漢字の直後に《よみ》を付けるか、「｜任意の語句《よみ》」のように｜（全角縦棒）で始まりを指定できます（青空文庫形式）。「[[rb:語句&gt;よみ]]」（pixiv形式）も入力として認識します。「ルビの出力形式」で選んだ形式に、コピー用テキスト・テキストダウンロードのルビ表記がすべて揃えられます。</p>
-  <p class="hint">強調（傍点）: 「[[強調したい文字列]]」のように二重角括弧で囲むと、縦書きプレビューで文字の右側に傍点が付きます。日本語入力で全角になった「［［強調したい文字列］］」でも認識します。</p>
-  <p class="hint">濁点の強制付与: 「{{あ}}」のように二重波括弧で囲むと、「あ゙」のように本来濁点が付かない文字にも濁点を付けられます（叫び声などの表現用）。全角「｛｛｝｝」でも認識します。</p>
-  <p class="hint">禁則処理: 列の先頭に「。」「」」「っ」「ー」などが、列の末尾に「「」「（」などが来ないように折り返し位置を調整します。「、」「。」は1文字だけ列の下にはみ出させ（ぶら下げ）、それ以外は前の列の文字を次の列へ送ります（追い出し）。「……」「――」の2連と縦中横の「!!」などは途中で分割しません。プレビュー上の折り返しのみに影響し、コピー用テキストは変わりません。</p>
-  <p class="hint">2段組み:列をA4用紙1ページ分の幅ごとに上下2段へ分けて、本のページのように表示・印刷します。「1段の列数」を指定すると、自動計算の代わりにその列数ごとに次の段へ進みます（空欄なら自動）。</p>
-  <p class="hint">ページ数の目安: 1段組みのとき「1ページの行数」を指定すると、本文の列数（空行も1行として数えます）から大体のページ数を下の文字数欄に表示します（タイトル・著者名は含みません）。2段組みのときは、プレビューのページ数をそのまま表示します。</p>
-  <p class="hint">原稿ファイルと同期: VS Code の Live Preview などローカルサーバー経由で開いているとき、このフォルダの「原稿.txt」を約1秒ごとに読み込み、変更があれば入力欄へ自動で流し込みます。同期中は入力欄を直接編集できません（原稿.txt 側を編集・保存してください）。ファイルを直接開いた場合（file://）は使えません。</p>
-  <p class="hint">入力内容と各設定は、このブラウザ内（localStorage）に自動保存されます。ページを再読み込みしても消えません（他の端末やサーバーには送信されません）。</p>
+  <details class="hints" id="hints">
+    <summary>使い方の説明</summary>
+    <details class="hint-item">
+      <summary>タイトル・著者名</summary>
+      <p class="hint">タイトル・著者名を入力すると、縦書きプレビューの一番右（先頭）に大きめの文字で表示されます（どちらも空欄なら表示されません）。テキスト・HTML出力や印刷にも反映されます。</p>
+    </details>
+    <details class="hint-item">
+      <summary>同人誌サイズ</summary>
+      <p class="hint">選択すると「1行の文字数」を判型ごとの目安に自動設定します。フォントサイズや余白で最適な字数は変わるため、あくまで目安です。「1行の文字数」を直接編集すると自動的に「カスタム」に戻ります。</p>
+    </details>
+    <details class="hint-item">
+      <summary>ルビ</summary>
+      <p class="hint">「本気《マジ》」のように漢字の直後に《よみ》を付けるか、「｜任意の語句《よみ》」のように｜（全角縦棒）で始まりを指定できます（青空文庫形式）。「[[rb:語句&gt;よみ]]」（pixiv形式）も入力として認識します。「ルビの出力形式」で選んだ形式に、コピー用テキスト・テキストダウンロードのルビ表記がすべて揃えられます。</p>
+    </details>
+    <details class="hint-item">
+      <summary>強調（傍点）</summary>
+      <p class="hint">「[[強調したい文字列]]」のように二重角括弧で囲むと、縦書きプレビューで文字の右側に傍点が付きます。日本語入力で全角になった「［［強調したい文字列］］」でも認識します。</p>
+    </details>
+    <details class="hint-item">
+      <summary>濁点の強制付与</summary>
+      <p class="hint">「{{あ}}」のように二重波括弧で囲むと、「あ゙」のように本来濁点が付かない文字にも濁点を付けられます（叫び声などの表現用）。全角「｛｛｝｝」でも認識します。また「濁点・半濁点を直前の文字に結合する」が ON なら、日本語入力で打った「あ゛」「う゜」や半角の「ｱﾞ」も、記法なしで1文字分の「あ゙」「う゚」「ア゙」に変換します（「か゛」→「が」のように、通常の濁音・半濁音になる組み合わせはその文字に置き換えます）。</p>
+    </details>
+    <details class="hint-item">
+      <summary>数字の縦中横</summary>
+      <p class="hint">「数字を漢数字に変換する」を外して算用数字のまま書くとき、半角数字の1〜2桁（「23時」の「23」など）を1マスに収めて縦向きに表示します。3桁以上は横倒しのままです。プレビュー上の表示のみで、コピー用テキストは変わりません。</p>
+    </details>
+    <details class="hint-item">
+      <summary>禁則処理</summary>
+      <p class="hint">列の先頭に「。」「」」「っ」「ー」などが、列の末尾に「「」「（」などが来ないように折り返し位置を調整します。「、」「。」は1文字だけ列の下にはみ出させ（ぶら下げ）、それ以外は前の列の文字を次の列へ送ります（追い出し）。「……」「――」の2連と縦中横の「!!」などは途中で分割しません。プレビュー上の折り返しのみに影響し、コピー用テキストは変わりません。</p>
+    </details>
+    <details class="hint-item">
+      <summary>改ページ</summary>
+      <p class="hint">「［＃改ページ］」（青空文庫）または「[newpage]」（pixiv）だけを書いた行で、次のページから始めます。2段組み・印刷では次のページへ送り、1段組みのプレビューでは区切り線を表示します。コピー用テキストとテキストダウンロードでは「ルビの出力形式」に合わせた記法に揃えます。</p>
+    </details>
+    <details class="hint-item">
+      <summary>2段組み</summary>
+      <p class="hint">列をA4用紙1ページ分の幅ごとに上下2段へ分けて、本のページのように表示・印刷します。「1段の列数」を指定すると、自動計算の代わりにその列数ごとに次の段へ進みます（空欄なら自動）。</p>
+    </details>
+    <details class="hint-item">
+      <summary>1段組みのページ枠</summary>
+      <p class="hint">1段組みのとき、「1ページの行数」ごとに列を区切って本のページのような枠で表示・印刷します（「1ページの行数」が空欄のときは使えません）。タイトル・著者名は1ページ目の先頭の列として数えます。</p>
+    </details>
+    <details class="hint-item">
+      <summary>ページ数の目安</summary>
+      <p class="hint">1段組みのとき「1ページの行数」を指定すると、本文の列数（空行も1行として数えます）から大体のページ数を下の文字数欄に表示します（タイトル・著者名は含みません）。2段組みのときは、プレビューのページ数をそのまま表示します。</p>
+    </details>
+    <details class="hint-item">
+      <summary>PDF印刷の用紙</summary>
+      <p class="hint">「A4」以外を選ぶと、「PDFとして印刷」をその判型の用紙サイズ（文庫 105×148mm、新書 103×182mm、A5 148×210mm、B6 128×182mm、B5 182×257mm）で出力します。1列に「1行の文字数」＋1字（ぶら下げ分）が収まるよう文字の大きさを自動で決め、1ページの列数が決まっているとき（1段組みのページ枠・2段組みの「1段の列数」）は横幅にも収まるよう調整します。「同人誌サイズ」の選択とは独立しているので、「1行の文字数」を自由に変えても用紙は変わりません。</p>
+    </details>
+    <details class="hint-item">
+      <summary>原稿ファイルと同期</summary>
+      <p class="hint">VS Code の Live Preview などローカルサーバー経由で開いているとき、このフォルダの「原稿.txt」を約1秒ごとに読み込み、変更があれば入力欄へ自動で流し込みます。同期中は入力欄を直接編集できません（原稿.txt 側を編集・保存してください）。ファイルを直接開いた場合（file://）は使えません。</p>
+    </details>
+    <details class="hint-item">
+      <summary>自動保存</summary>
+      <p class="hint">入力内容と各設定は、このブラウザ内（localStorage）に自動保存されます。ページを再読み込みしても消えません（他の端末やサーバーには送信されません）。</p>
+    </details>
+  </details>
 
   <div class="panes">
     <div class="pane">
@@ -492,7 +592,12 @@
   const convertEl = document.getElementById('convertPunctuation');
   const convertNumEl = document.getElementById('convertNumbers');
   const convertHyphenEl = document.getElementById('convertHyphen');
+  const convertDakutenEl = document.getElementById('convertDakuten');
   const kinsokuEl = document.getElementById('kinsoku');
+  const tcyDigitsEl = document.getElementById('tcyDigits');
+  const pageBreakEl = document.getElementById('pageBreak');
+  const pageFramesEl = document.getElementById('pageFrames');
+  const printPaperEl = document.getElementById('printPaper');
   const twoColumnModeEl = document.getElementById('twoColumnMode');
   const columnsPerRowEl = document.getElementById('columnsPerRow');
   const linesPerPageEl = document.getElementById('linesPerPage');
@@ -510,6 +615,20 @@
   const fileSyncStatusEl = document.getElementById('fileSyncStatus');
 
   let lastColumns = [];
+  // 改ページ記法の直後に来る列の番号（lastColumns の添字）
+  let lastPageBreaks = new Set();
+
+  // 改ページ記法: その記法だけを書いた行（前後の空白は許容）。青空文庫形式・pixiv形式とも、半角・全角の括弧を許容する
+  const PAGE_BREAK_LINE_RE = /^\s*(?:[［\[][＃#]改ページ[］\]]|[［\[]newpage[］\]])\s*$/;
+  function pageBreakMarker(rubyFormat) {
+    return rubyFormat === 'pixiv' ? '[newpage]' : '［＃改ページ］';
+  }
+  // コピー用テキスト向け: 改ページ記法の行を、選んだ出力形式の記法に揃える
+  function normalizePageBreakLines(text, rubyFormat) {
+    return text.split('\n').map(function (line) {
+      return PAGE_BREAK_LINE_RE.test(line) ? pageBreakMarker(rubyFormat) : line;
+    }).join('\n');
+  }
 
   const SAMPLE = '彼は静かに振り返った。\n「本当に、来たのか……！？」\n「ああ、来たとも！！」\n「そんな……？？」\n「じゃあ、あと10分で来るのか……？！」\n窓の外では雨が降り続いていた。時刻は23時。\n｜久遠《くおん》の闇の奥で、彼は本気《マジ》になった。\n「[[来るまで]]車で待つか」とだけ、彼は言った。\n「まだか-」と、廊下の奥から声がした。';
   const SAMPLE_TITLE = '久遠の闇';
@@ -540,6 +659,20 @@
   }
 
   // 半角ハイフンは縦書きで正しく回転せず横棒のまま表示されるため、長音記号に置き換える
+  // 日本語入力で打った単独の濁点「゛」(U+309B)・半濁点「゜」(U+309C)や、半角の「ﾞ」「ﾟ」は独立した1文字のため、
+  // 縦書きでは直前の文字と別のマスに分かれてしまう。直前の文字に結合する濁点(U+3099)・半濁点(U+309A)に置き換えて1マスにまとめる。
+  // - 「か゛」→「が」のように合成済みの文字があるものは NFC 正規化でその文字にする（フォントでの表示が安定するため）
+  // - 半角カタカナ「ｶﾞ」「ｱﾞ」は全角に直してから結合する（「ガ」「ア゙」）
+  // - 行頭や空白・記号の直後にある「゛」は、記号として使っているものとみなして変換しない
+  const SPACING_DAKUTEN_RE = /(\p{L})([゛゜ﾞﾟ])/gu;
+  function convertSpacingDakuten(text) {
+    return text.replace(SPACING_DAKUTEN_RE, function (m, base, mark) {
+      const combining = (mark === '゛' || mark === 'ﾞ') ? '\u3099' : '\u309A';
+      const fullBase = /[\uFF66-\uFF9D]/u.test(base) ? base.normalize('NFKC') : base;
+      return (fullBase + combining).normalize('NFC');
+    });
+  }
+
   function convertHyphenToChoonpu(text) {
     return text.replaceAll('-', 'ー');
   }
@@ -652,13 +785,23 @@
 
   // 文字列を「縦書きで1マス（または分割できない2マス）を占める単位」に分割する。
   // - 結合文字（濁点 U+3099 など）は直前の文字とまとめ、文字と濁点の間で列が切れないようにする
-  // - 縦中横で1マスに収める「!!」「!?」「?!」は1マスとして扱う（highlightCombined と同じ左からの最長一致）
+  // - 縦中横で1マスに収める「!!」「!?」「?!」と、「数字の縦中横」が ON のときの半角数字1〜2桁は1マスとして扱う
   // - 「……」「――」の2連は途中で分割しない（2マスの1単位として扱う）
-  const CELL_RE = /!!|!\?|\?!|……|‥‥|――|——|[\s\S]\p{M}*/gu;
+  // 縦中横の判定（TCY_RE）は、タイトル・著者名の描画（renderInlineText）でも同じものを使う
+  const TCY_SYMBOL_SRC = '!!|!\\?|\\?!';
+  const TCY_DIGITS_SRC = '(?<![0-9])[0-9]{1,2}(?![0-9])';
+  const CELL_REST_SRC = '……|‥‥|――|——|[\\s\\S]\\p{M}*';
+  // 縦中横になる候補を先頭のキャプチャグループに入れ、どの分岐で一致したかで縦中横かどうかを決める
+  // （切り出した1文字だけを改めて判定すると、「2026」から切り出した「2」まで縦中横と誤判定するため）
+  const CELL_RE_WITH_DIGITS = new RegExp('(' + TCY_DIGITS_SRC + '|' + TCY_SYMBOL_SRC + ')|' + CELL_REST_SRC, 'gu');
+  const CELL_RE_NO_DIGITS = new RegExp('(' + TCY_SYMBOL_SRC + ')|' + CELL_REST_SRC, 'gu');
   const DOUBLE_CELLS = new Set(['……', '‥‥', '――', '——']);
+  // 「半角数字2桁までを縦中横にする」の状態。update() のたびにチェックボックスから読み直す
+  let tcyDigitsEnabled = true;
   function splitCells(text) {
-    return (text.match(CELL_RE) || []).map(function (cell) {
-      return { text: cell, len: DOUBLE_CELLS.has(cell) ? 2 : 1 };
+    const cellRe = tcyDigitsEnabled ? CELL_RE_WITH_DIGITS : CELL_RE_NO_DIGITS;
+    return Array.from(text.matchAll(cellRe), function (m) {
+      return { text: m[0], len: DOUBLE_CELLS.has(m[0]) ? 2 : 1, tcy: m[1] !== undefined };
     });
   }
 
@@ -668,11 +811,11 @@
     for (const t of tokenize(paragraph)) {
       if (t.type === 'plain' || t.type === 'emphasis') {
         for (const cell of splitCells(t.text)) {
-          units.push({ kind: 'char', text: cell.text, len: cell.len, emphasis: t.type === 'emphasis' });
+          units.push({ kind: 'char', text: cell.text, len: cell.len, tcy: cell.tcy, emphasis: t.type === 'emphasis' });
         }
       } else if (t.type === 'dakuten') {
         for (const cell of splitCells(t.text)) {
-          units.push({ kind: 'char', text: cell.text + '゙', len: cell.len, emphasis: false });
+          units.push({ kind: 'char', text: cell.text + '゙', len: cell.len, tcy: false, emphasis: false });
         }
       } else {
         units.push({ kind: 'ruby', base: t.base, reading: t.reading, len: Array.from(t.base).length });
@@ -710,6 +853,11 @@
   }
   function isHeadNG(u) { return u !== undefined && KINSOKU_HEAD.has(unitHeadChar(u)); }
   function isTailNG(u) { return u !== undefined && KINSOKU_TAIL.has(unitTailChar(u)); }
+  // 分割禁止: 連続した数字（「2026」など）の途中では列を分けない
+  const DIGIT_RE = /^[0-9０-９]$/;
+  function isDigitPair(prev, next) {
+    return prev !== undefined && next !== undefined && DIGIT_RE.test(unitTailChar(prev)) && DIGIT_RE.test(unitHeadChar(next));
+  }
   function isHangable(u) { return u.kind === 'char' && u.len === 1 && KINSOKU_HANG.has(unitHeadChar(u)); }
 
   // 追い出し: current の後ろから何単位を次の列へ送れば禁則に触れないかを探し、current に残す単位数を返す。
@@ -718,7 +866,7 @@
     const minK = Math.max(1, current.length - KINSOKU_MAX_PUSHBACK);
     for (let k = current.length; k >= minK; k--) {
       const head = k < current.length ? current[k] : next;
-      if (!isHeadNG(head) && !isTailNG(current[k - 1])) return k;
+      if (!isHeadNG(head) && !isTailNG(current[k - 1]) && !isDigitPair(current[k - 1], head)) return k;
     }
     return current.length;
   }
@@ -768,57 +916,70 @@
     return div.innerHTML;
   }
 
-  // 「!!」「!?」「?!」は半角2文字を1マスに収める縦中横表示にする
-  // （左から順に1回の置換で判定し、文字数カウント用の splitCells と区切り方を揃える）
-  function highlightCombined(escapedText) {
-    return escapedText
-      .replace(/!!|!\?|\?!/g, '<span class="tcy">$&</span>');
-  }
-
-  // 半角アルファベットの連続（BBQなど）を検出し、1文字ずつ縦にまっすぐ並ぶよう個別にラップする。
+  // 半角アルファベットの連続（BBQなど）は1文字ずつ縦にまっすぐ並ぶよう個別にラップし、
+  // detectTcy が true のときは縦中横（「!!」「!?」「?!」、ONなら半角数字1〜2桁）も1マスにまとめる。
   // エスケープ後の文字列に対して正規表現をかけると &amp; などの実体参照の中の文字（amp等）を誤って
-  // 拾ってしまうため、エスケープ前の生テキストの段階でLatin runを検出してから個別にエスケープする。
-  const LATIN_RUN_RE = /[A-Za-z]+/g;
-  function renderInlineText(rawText) {
+  // 拾ってしまうため、エスケープ前の生テキストの段階で検出してから個別にエスケープする。
+  // 本文は列に分けた時点で縦中横の単位が決まっている（renderColumn が描画する）ため detectTcy=false で呼ぶ。
+  // ここで改めて判定すると、列の境目で「123」が「12」「3」に分かれたときに「12」を誤って縦中横にしてしまう。
+  const INLINE_RE_WITH_DIGITS = new RegExp('[A-Za-z]+|' + TCY_DIGITS_SRC + '|' + TCY_SYMBOL_SRC, 'gu');
+  const INLINE_RE_NO_DIGITS = new RegExp('[A-Za-z]+|' + TCY_SYMBOL_SRC, 'gu');
+  const INLINE_RE_LATIN_ONLY = /[A-Za-z]+/gu;
+  function renderInlineText(rawText, detectTcy) {
+    const re = !detectTcy ? INLINE_RE_LATIN_ONLY : (tcyDigitsEnabled ? INLINE_RE_WITH_DIGITS : INLINE_RE_NO_DIGITS);
     let html = '';
     let lastIndex = 0;
     let m;
-    LATIN_RUN_RE.lastIndex = 0;
-    while ((m = LATIN_RUN_RE.exec(rawText)) !== null) {
+    re.lastIndex = 0;
+    while ((m = re.exec(rawText)) !== null) {
       if (m.index > lastIndex) {
-        html += highlightCombined(escapeHtml(rawText.slice(lastIndex, m.index)));
+        html += escapeHtml(rawText.slice(lastIndex, m.index));
       }
-      html += '<span class="latin-upright">' + escapeHtml(m[0]) + '</span>';
-      lastIndex = LATIN_RUN_RE.lastIndex;
+      const cls = /^[A-Za-z]/.test(m[0]) ? 'latin-upright' : 'tcy';
+      html += '<span class="' + cls + '">' + escapeHtml(m[0]) + '</span>';
+      lastIndex = re.lastIndex;
     }
     if (lastIndex < rawText.length) {
-      html += highlightCombined(escapeHtml(rawText.slice(lastIndex)));
+      html += escapeHtml(rawText.slice(lastIndex));
     }
     return html;
   }
 
+  // 1列分の単位を HTML にする。傍点は連続する範囲をまとめて1つのspanで囲み、縦中横の単位は個別のspanにする
   function renderColumn(units) {
     let html = '';
+    let groupHtml = '';
     let buffer = '';
-    let bufferEmphasis = false;
-    function flushBuffer() {
+    let groupEmphasis = false;
+    function flushText() {
       if (buffer) {
-        const inner = renderInlineText(buffer);
-        html += bufferEmphasis ? '<span class="bouten">' + inner + '</span>' : inner;
+        groupHtml += renderInlineText(buffer, false);
         buffer = '';
+      }
+    }
+    function flushGroup() {
+      flushText();
+      if (groupHtml) {
+        html += groupEmphasis ? '<span class="bouten">' + groupHtml + '</span>' : groupHtml;
+        groupHtml = '';
       }
     }
     for (const u of units) {
       if (u.kind === 'char') {
-        if (buffer && u.emphasis !== bufferEmphasis) flushBuffer();
-        bufferEmphasis = u.emphasis;
-        buffer += u.text;
+        if ((buffer || groupHtml) && u.emphasis !== groupEmphasis) flushGroup();
+        groupEmphasis = u.emphasis;
+        if (u.tcy) {
+          flushText();
+          groupHtml += '<span class="tcy">' + escapeHtml(u.text) + '</span>';
+        } else {
+          buffer += u.text;
+        }
       } else {
-        flushBuffer();
+        flushGroup();
         html += '<ruby>' + escapeHtml(u.base) + '<rt>' + escapeHtml(u.reading) + '</rt></ruby>';
       }
     }
-    flushBuffer();
+    flushGroup();
     return html;
   }
 
@@ -902,6 +1063,7 @@
       '.vertical-preview{display:flex;flex-direction:row-reverse;align-items:flex-start;gap:0.3em;flex-wrap:wrap;}',
       '.v-line{writing-mode:vertical-rl;white-space:pre;font-size:1.3rem;line-height:1.9;font-family:"游明朝","Yu Mincho","Hiragino Mincho ProN","MS PMincho",serif;flex:none;}',
       '.v-line:empty{min-width:1em;}',
+      '.vertical-preview>.v-line[data-page-break]{margin-right:0.8em;padding-right:0.8em;border-right:2px dashed #8a4b3b;}',
       '.v-title{font-size:2rem;font-weight:700;letter-spacing:0.2em;margin-right:0.3em;}',
       '.v-author{font-size:1rem;margin-right:0.6em;}',
       '.page-row{display:flex;flex-direction:row-reverse;align-items:flex-start;gap:0.3em;}',
@@ -919,45 +1081,130 @@
   // A4・余白1.5cmを想定した印刷可能幅(px)。画面の2段組み表示もこの幅を基準に合わせている。
   const PAGE_WIDTH_PX = 640;
 
+  // 「判型サイズで印刷」の用紙サイズと余白(mm)。キーは「同人誌サイズ」の選択肢
+  const BOOK_SIZES = {
+    bunko: { width: 105, height: 148, margin: 10 },
+    shinsho: { width: 103, height: 182, margin: 10 },
+    a5: { width: 148, height: 210, margin: 15 },
+    b6: { width: 128, height: 182, margin: 12 },
+    b5: { width: 182, height: 257, margin: 18 },
+  };
+  const PX_PER_MM = 96 / 25.4;
+  const LINE_HEIGHT_EM = 1.9; // .v-line の line-height（列の幅＝文字の大きさ×これ）
+  const TITLE_SCALE = 2 / 1.3; // .v-title / .v-line の文字の大きさの比
+  const AUTHOR_SCALE = 1 / 1.3; // .v-author / .v-line の文字の大きさの比
+  const ROW_GAP_PX = 24; // 2段組みの段と段の間（段の間隔＋区切り線の余白）
+  const MIN_FONT_PX = 6;
+
+  // 判型サイズで印刷するときの文字の大きさ・1段に並べられる幅を計算する。
+  // - 1列に「1行の文字数」＋1字（ぶら下げ分）が収まる大きさにする
+  // - 1段の列数が決まっているとき（columnsPerRow > 0）は、その列数が横幅に収まる大きさとの小さい方にする
+  // - 列の並べ方を実際の幅で決めるときの基準幅は、A4のとき（680pxに対して640px）と同じ比率で少し余裕を持たせる
+  function computeBookPrintMetrics(size, charsPerColumn, rowsPerPage, columnsPerRow, gapPx) {
+    const printableWidthPx = (size.width - size.margin * 2) * PX_PER_MM;
+    const printableHeightPx = (size.height - size.margin * 2) * PX_PER_MM;
+    const rowHeightPx = (printableHeightPx - ROW_GAP_PX * (rowsPerPage - 1)) / rowsPerPage;
+    let fontPx = rowHeightPx / (charsPerColumn + 1);
+    if (columnsPerRow > 0) {
+      const byWidth = (printableWidthPx * 0.98 - gapPx * (columnsPerRow - 1)) / (columnsPerRow * LINE_HEIGHT_EM);
+      fontPx = Math.min(fontPx, byWidth);
+    }
+    fontPx = Math.max(MIN_FONT_PX, Math.floor(fontPx * 10) / 10);
+    return {
+      fontPx: fontPx,
+      pageWidthPx: Math.floor(printableWidthPx * (640 / 680)),
+      pageCss: '@page{size:' + size.width + 'mm ' + size.height + 'mm;margin:' + size.margin + 'mm;}',
+    };
+  }
+
+  // 判型サイズで印刷するときの用紙・文字の大きさを、印刷の直前にスタイルとして差し込む（印刷後に取り除く）。
+  // 文字の大きさを先に変えてから列の幅を測らないと、ページの分け方が印刷結果とずれるため、画面にも一時的に反映される。
+  const BOOK_SIZE_STYLE_ID = 'bookSizePrintStyle';
+  function applyBookSizePrintStyle(rowsPerPage, columnsPerRow) {
+    const size = BOOK_SIZES[printPaperEl.value];
+    if (!size) return null;
+    let n = parseInt(lineLengthEl.value, 10);
+    if (!Number.isFinite(n) || n < 1) n = 1;
+    const gapPx = parseFloat(getComputedStyle(previewEl).columnGap) || 0;
+    const metrics = computeBookPrintMetrics(size, n, rowsPerPage, columnsPerRow, gapPx);
+    const style = document.createElement('style');
+    style.id = BOOK_SIZE_STYLE_ID;
+    style.textContent = metrics.pageCss +
+      '.v-line{font-size:' + metrics.fontPx + 'px;}' +
+      '.v-line.v-title{font-size:' + (metrics.fontPx * TITLE_SCALE).toFixed(1) + 'px;}' +
+      '.v-line.v-author{font-size:' + (metrics.fontPx * AUTHOR_SCALE).toFixed(1) + 'px;}';
+    document.head.appendChild(style);
+    return metrics;
+  }
+  function removeBookSizePrintStyle() {
+    const style = document.getElementById(BOOK_SIZE_STYLE_ID);
+    if (style) style.remove();
+  }
+
+  // 改ページ記法で区切られた部分ごとに、列数を1ページの行数で割って切り上げ、合計したページ数
+  function estimatePageCount(columnCount, pageBreaks, linesPerPage) {
+    const starts = [0].concat(Array.from(pageBreaks).sort(function (a, b) { return a - b; }), [columnCount]);
+    let pages = 0;
+    for (let i = 0; i + 1 < starts.length; i++) {
+      pages += Math.ceil((starts[i + 1] - starts[i]) / linesPerPage);
+    }
+    return pages;
+  }
+
   // 列(.v-line)を1行(段)ずつにまとめる。columnsPerRowが指定されていればその列数で機械的に区切り、
   // 未指定なら実際に描画された列の幅を測ってpageWidthPxに収まる分だけを1行とする。
   // まとめた行をrowsPerPage行ずつページにグループ化する。
+  // 改ページ記法の直後の列（data-page-break）は、新しい行・新しいページの先頭にする。
   function groupLinesIntoPages(lines, pageWidthPx, rowsPerPage, columnsPerRow) {
-    let rows;
-    if (columnsPerRow && columnsPerRow > 0) {
-      rows = [];
-      for (let i = 0; i < lines.length; i += columnsPerRow) {
-        rows.push(lines.slice(i, i + columnsPerRow));
+    const gapPx = parseFloat(getComputedStyle(previewEl).columnGap) || 0;
+    const rows = [];
+    let current = [];
+    let currentWidth = 0;
+    let currentBreak = false;
+    function pushRow() {
+      if (current.length > 0) rows.push({ lines: current, breakBefore: currentBreak });
+      current = [];
+      currentWidth = 0;
+      currentBreak = false;
+    }
+    lines.forEach(function (el) {
+      if (el.hasAttribute('data-page-break')) {
+        pushRow();
+        currentBreak = true;
       }
-    } else {
-      const gapPx = parseFloat(getComputedStyle(previewEl).columnGap) || 0;
-      rows = [];
-      let current = [];
-      let currentWidth = 0;
-      lines.forEach(function (el) {
+      if (columnsPerRow && columnsPerRow > 0) {
+        if (current.length >= columnsPerRow) pushRow();
+        current.push(el);
+      } else {
         const w = el.getBoundingClientRect().width;
-        const extra = current.length > 0 ? gapPx : 0;
-        if (current.length > 0 && currentWidth + extra + w > pageWidthPx) {
-          rows.push(current);
-          current = [];
-          currentWidth = 0;
-        }
+        if (current.length > 0 && currentWidth + gapPx + w > pageWidthPx) pushRow();
         currentWidth += (current.length > 0 ? gapPx : 0) + w;
         current.push(el);
-      });
-      if (current.length > 0) rows.push(current);
-    }
+      }
+    });
+    pushRow();
 
     const pages = [];
-    for (let i = 0; i < rows.length; i += rowsPerPage) {
-      pages.push(rows.slice(i, i + rowsPerPage));
-    }
+    let page = [];
+    rows.forEach(function (row) {
+      if (page.length >= rowsPerPage || (row.breakBefore && page.length > 0)) {
+        pages.push(page);
+        page = [];
+      }
+      page.push(row.lines);
+    });
+    if (page.length > 0) pages.push(page);
     return pages;
   }
 
   function getColumnsPerRow() {
     const v = parseInt(columnsPerRowEl.value, 10);
     return Number.isFinite(v) && v > 0 ? v : 0;
+  }
+
+  // 1段組みのページ枠表示が有効か（2段組みでなく、チェックが入っていて、1ページの行数が指定されている）
+  function oneColumnFramesActive() {
+    return !twoColumnModeEl.checked && pageFramesEl.checked && getLinesPerPage() > 0;
   }
 
   function getLinesPerPage() {
@@ -1009,6 +1256,15 @@
     const lines = Array.from(previewEl.querySelectorAll('.v-line'));
     if (lines.length === 0) return;
     const pages = groupLinesIntoPages(lines, PAGE_WIDTH_PX, 2, getColumnsPerRow());
+    wrapLinesIntoPageDom(pages, 'preview-page');
+    equalizePageSizes();
+  }
+
+  // 画面プレビューを1段組みのページ枠（1ページ=「1ページの行数」の列）に組み直す
+  function applyOneColumnFrames() {
+    const lines = Array.from(previewEl.querySelectorAll('.v-line'));
+    if (lines.length === 0) return;
+    const pages = groupLinesIntoPages(lines, PAGE_WIDTH_PX, 1, getLinesPerPage());
     wrapLinesIntoPageDom(pages, 'preview-page');
     equalizePageSizes();
   }
@@ -1112,10 +1368,12 @@
     result = convertEl.checked ? applyPunctuationRules(result) : result;
     if (convertNumEl.checked) result = convertNumbersToKanji(result);
     if (convertHyphenEl.checked) result = convertHyphenToChoonpu(result);
+    if (convertDakutenEl.checked) result = convertSpacingDakuten(result);
     return result;
   }
 
   function update() {
+    tcyDigitsEnabled = tcyDigitsEl.checked;
     const raw = stripVariationSelectors(inputEl.value);
     let n = parseInt(lineLengthEl.value, 10);
     if (!Number.isFinite(n) || n < 1) n = 1;
@@ -1127,14 +1385,27 @@
     // [[...]]の傍点記法は青空文庫の注記形式［＃「」に傍点］に変換し、{{...}}の濁点強制付与は実際に濁点を付けて書き戻す。
     const rubyFormat = rubyFormatEl.value;
     const rubyNormalized = rubyFormat === 'pixiv' ? convertAozoraRubyToPixiv(converted) : convertPixivRubyToAozora(converted);
-    const finalConverted = convertDakutenMarkup(convertEmphasisToAozora(rubyNormalized));
+    let finalConverted = convertDakutenMarkup(convertEmphasisToAozora(rubyNormalized));
+    const pageBreakEnabled = pageBreakEl.checked;
+    if (pageBreakEnabled) finalConverted = normalizePageBreakLines(finalConverted, rubyFormat);
     outputEl.value = finalConverted;
     updateClipStudioOutput(raw, finalConverted);
 
     const paragraphs = converted.split('\n');
     const columns = [];
+    // 改ページ記法の行は列にせず、次の列の番号を控える。先頭・末尾の記法や連続した記法は1つにまとめる（空白ページは作らない）
+    const pageBreaks = new Set();
+    let breakPending = false;
     let totalChars = 0;
     for (const para of paragraphs) {
+      if (pageBreakEnabled && PAGE_BREAK_LINE_RE.test(para)) {
+        if (columns.length > 0) breakPending = true;
+        continue;
+      }
+      if (breakPending) {
+        pageBreaks.add(columns.length);
+        breakPending = false;
+      }
       const units = paragraphToUnits(para);
       totalChars += units.reduce((sum, u) => sum + u.len, 0);
       columns.push(...chunkUnits(units, n, kinsokuEl.checked));
@@ -1145,32 +1416,38 @@
     const titleVal = applyBasicConversions(titleTextEl.value.trim());
     const authorVal = applyBasicConversions(authorTextEl.value.trim());
     if (titleVal) {
-      titleHtml += '<div class="v-line v-title">' + renderInlineText(titleVal) + '</div>';
+      titleHtml += '<div class="v-line v-title">' + renderInlineText(titleVal, true) + '</div>';
     }
     if (authorVal) {
-      titleHtml += '<div class="v-line v-author">' + renderInlineText(authorVal) + '</div>';
+      titleHtml += '<div class="v-line v-author">' + renderInlineText(authorVal, true) + '</div>';
     }
 
     previewEl.innerHTML = titleHtml + columns
-      .map(col => '<div class="v-line">' + renderColumn(col) + '</div>')
+      .map((col, i) => '<div class="v-line"' + (pageBreaks.has(i) ? ' data-page-break="1"' : '') + '>' + renderColumn(col) + '</div>')
       .join('');
     if (twoColumnModeEl.checked) {
       applyTwoColumnLayout();
+    } else if (oneColumnFramesActive()) {
+      applyOneColumnFrames();
     }
 
     let statsText = '総文字数: ' + totalChars + '字　／　列数: ' + columns.length + '列（1列 ' + n + '字）';
     if (twoColumnModeEl.checked) {
       statsText += '　／　' + previewEl.querySelectorAll('.preview-page').length + 'ページ';
+    } else if (oneColumnFramesActive()) {
+      statsText += '　／　' + previewEl.querySelectorAll('.preview-page').length + 'ページ（1ページ ' + getLinesPerPage() + '行）';
     } else {
       // 1段組みは「1ページの行数」が指定されていれば、本文の列数（空行を含む）を1ページあたりの行数で割って目安を出す。
       // タイトル・著者名は扉ページなど別扱いになることが多いため数えない
+      // 改ページ記法があれば、区切られた部分ごとにページ数を切り上げて合計する
       const linesPerPage = getLinesPerPage();
       if (linesPerPage > 0) {
-        statsText += '　／　約' + Math.ceil(columns.length / linesPerPage) + 'ページ（1ページ ' + linesPerPage + '行）';
+        statsText += '　／　約' + estimatePageCount(columns.length, pageBreaks, linesPerPage) + 'ページ（1ページ ' + linesPerPage + '行）';
       }
     }
     statsEl.textContent = statsText;
     lastColumns = columns;
+    lastPageBreaks = pageBreaks;
     persistSettings();
   }
 
@@ -1204,10 +1481,15 @@
     saveToStorage('convertPunctuation', convertEl.checked ? '1' : '0');
     saveToStorage('convertNumbers', convertNumEl.checked ? '1' : '0');
     saveToStorage('convertHyphen', convertHyphenEl.checked ? '1' : '0');
+    saveToStorage('convertDakuten', convertDakutenEl.checked ? '1' : '0');
     saveToStorage('kinsoku', kinsokuEl.checked ? '1' : '0');
+    saveToStorage('tcyDigits', tcyDigitsEl.checked ? '1' : '0');
+    saveToStorage('pageBreak', pageBreakEl.checked ? '1' : '0');
     saveToStorage('twoColumnMode', twoColumnModeEl.checked ? '1' : '0');
     saveToStorage('columnsPerRow', columnsPerRowEl.value);
     saveToStorage('linesPerPage', linesPerPageEl.value);
+    saveToStorage('pageFrames', pageFramesEl.checked ? '1' : '0');
+    saveToStorage('printPaper', printPaperEl.value);
     saveToStorage('clipStudioEnabled', clipStudioEnabledEl.checked ? '1' : '0');
     const checkedRadio = document.querySelector('input[name="clipStudioMode"]:checked');
     saveToStorage('clipStudioMode', checkedRadio ? checkedRadio.value : 'vertical');
@@ -1246,19 +1528,37 @@
     const savedHyphen = loadFromStorage('convertHyphen');
     if (savedHyphen !== null) convertHyphenEl.checked = savedHyphen === '1';
 
+    const savedDakuten = loadFromStorage('convertDakuten');
+    if (savedDakuten !== null) convertDakutenEl.checked = savedDakuten === '1';
+
     const savedKinsoku = loadFromStorage('kinsoku');
     if (savedKinsoku !== null) kinsokuEl.checked = savedKinsoku === '1';
+
+    const savedTcyDigits = loadFromStorage('tcyDigits');
+    if (savedTcyDigits !== null) tcyDigitsEl.checked = savedTcyDigits === '1';
+
+    const savedPageBreak = loadFromStorage('pageBreak');
+    if (savedPageBreak !== null) pageBreakEl.checked = savedPageBreak === '1';
 
     const savedTwoCol = loadFromStorage('twoColumnMode');
     if (savedTwoCol !== null) twoColumnModeEl.checked = savedTwoCol === '1';
     columnsPerRowEl.disabled = !twoColumnModeEl.checked;
     linesPerPageEl.disabled = twoColumnModeEl.checked;
+    pageFramesEl.disabled = twoColumnModeEl.checked;
 
     const savedColsPerRow = loadFromStorage('columnsPerRow');
     if (savedColsPerRow !== null) columnsPerRowEl.value = savedColsPerRow;
 
     const savedLinesPerPage = loadFromStorage('linesPerPage');
     if (savedLinesPerPage !== null) linesPerPageEl.value = savedLinesPerPage;
+
+    const savedPageFrames = loadFromStorage('pageFrames');
+    if (savedPageFrames !== null) pageFramesEl.checked = savedPageFrames === '1';
+
+    const savedPrintPaper = loadFromStorage('printPaper');
+    if (savedPrintPaper !== null && (savedPrintPaper === 'a4' || BOOK_SIZES[savedPrintPaper])) {
+      printPaperEl.value = savedPrintPaper;
+    }
 
     const savedClipEnabled = loadFromStorage('clipStudioEnabled');
     if (savedClipEnabled !== null) {
@@ -1276,7 +1576,14 @@
   }
 
   restoreSettings();
-  [inputEl, titleTextEl, authorTextEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl, kinsokuEl, twoColumnModeEl, columnsPerRowEl, linesPerPageEl].forEach(function (el) {
+
+  // 「使い方の説明」の開閉状態を覚えておく（既定は閉じた状態）。中の各項目の開閉は保存しない
+  const hintsEl = document.getElementById('hints');
+  hintsEl.open = loadFromStorage('hintsOpen') === '1';
+  hintsEl.addEventListener('toggle', function () {
+    saveToStorage('hintsOpen', hintsEl.open ? '1' : '0');
+  });
+  [inputEl, titleTextEl, authorTextEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl, convertDakutenEl, tcyDigitsEl, pageBreakEl, kinsokuEl, twoColumnModeEl, columnsPerRowEl, linesPerPageEl, pageFramesEl].forEach(function (el) {
     el.addEventListener('input', scheduleUpdate);
   });
   clipStudioModeRadios.forEach(function (el) {
@@ -1285,6 +1592,7 @@
   twoColumnModeEl.addEventListener('input', function () {
     columnsPerRowEl.disabled = !twoColumnModeEl.checked;
     linesPerPageEl.disabled = twoColumnModeEl.checked;
+    pageFramesEl.disabled = twoColumnModeEl.checked;
   });
   pageSizePresetEl.addEventListener('change', function () {
     const preset = PAGE_SIZE_PRESETS[pageSizePresetEl.value];
@@ -1294,6 +1602,7 @@
     }
   });
   rubyFormatEl.addEventListener('change', scheduleUpdate);
+  printPaperEl.addEventListener('change', persistSettings);
   // 1行の文字数をプリセットと違う値に手動で変更したら、選択を「カスタム」に戻す
   lineLengthEl.addEventListener('input', function () {
     const preset = PAGE_SIZE_PRESETS[pageSizePresetEl.value];
@@ -1353,7 +1662,10 @@
     const authorVal = applyBasicConversions(authorTextEl.value.trim());
     if (titleVal) headerLines.push(titleVal);
     if (authorVal) headerLines.push(authorVal);
-    const bodyText = lastColumns.map(function (col) { return unitsToPlainText(col, rubyFormatEl.value); }).join('\n');
+    const bodyText = lastColumns.map(function (col, i) {
+      const line = unitsToPlainText(col, rubyFormatEl.value);
+      return lastPageBreaks.has(i) ? pageBreakMarker(rubyFormatEl.value) + '\n' + line : line;
+    }).join('\n');
     const text = headerLines.length ? headerLines.join('\n') + '\n\n' + bodyText : bodyText;
     downloadFile('縦書きプレビュー.txt', text, 'text/plain');
   });
@@ -1369,7 +1681,12 @@
     const lines = Array.from(previewEl.querySelectorAll('.v-line'));
     if (lines.length === 0) return;
     const rowsPerPage = twoColumnModeEl.checked ? 2 : 1;
-    const pages = groupLinesIntoPages(lines, PAGE_WIDTH_PX, rowsPerPage, getColumnsPerRow());
+    // 1段組みのページ枠が有効なら、画面と同じく「1ページの行数」ごとにページを分ける
+    const columnsPerRow = twoColumnModeEl.checked ? getColumnsPerRow() : (oneColumnFramesActive() ? getLinesPerPage() : 0);
+    // 判型サイズで印刷するなら、文字の大きさを変えてから（＝印刷時と同じ列の幅で）ページを分ける
+    const bookMetrics = applyBookSizePrintStyle(rowsPerPage, columnsPerRow);
+    const pageWidthPx = bookMetrics ? bookMetrics.pageWidthPx : PAGE_WIDTH_PX;
+    const pages = groupLinesIntoPages(lines, pageWidthPx, rowsPerPage, columnsPerRow);
     wrapLinesIntoPageDom(pages, 'print-page');
     printPaginated = true;
   }
@@ -1378,6 +1695,7 @@
   function restorePrintPages() {
     if (!printPaginated) return;
     printPaginated = false;
+    removeBookSizePrintStyle();
     update();
   }
 
@@ -1517,6 +1835,16 @@
   update();
   restoreScrollState(loadSavedScrollState());
   applyFileSyncState();
+
+  // 自動テスト（tests/）から、入力のたびの待ち時間なしに再描画・印刷準備を呼ぶための入口。画面の動作には影響しない。
+  window.__tategakiTest = {
+    update: update,
+    preparePrintPages: preparePrintPages,
+    restorePrintPages: restorePrintPages,
+    getLastColumns: function () { return lastColumns; },
+    computeBookPrintMetrics: computeBookPrintMetrics,
+    BOOK_SIZES: BOOK_SIZES,
+  };
 })();
 </script>
 </body>
