@@ -1541,6 +1541,14 @@
   update();
   restoreScrollState(loadSavedScrollState());
   applyFileSyncState();
+
+  // 自動テスト（tests/）から、入力のたびの待ち時間なしに再描画・印刷準備を呼ぶための入口。画面の動作には影響しない。
+  window.__tategakiTest = {
+    update: update,
+    preparePrintPages: preparePrintPages,
+    restorePrintPages: restorePrintPages,
+    getLastColumns: function () { return lastColumns; },
+  };
 })();
 </script>
 </body>
