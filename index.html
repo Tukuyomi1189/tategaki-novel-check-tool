@@ -396,6 +396,10 @@
       ハイフン(-)を長音記号(ー)に変換する
     </label>
     <label>
+      <input type="checkbox" id="kinsoku" checked>
+      禁則処理を行う（句読点のぶら下げ・行頭／行末禁則の追い出し）
+    </label>
+    <label>
       <input type="checkbox" id="twoColumnMode">
       2段組みで表示する
     </label>
@@ -420,7 +424,8 @@
   <p class="hint">ルビ: 「本気《マジ》」のように漢字の直後に《よみ》を付けるか、「｜任意の語句《よみ》」のように｜（全角縦棒）で始まりを指定できます（青空文庫形式）。「[[rb:語句&gt;よみ]]」（pixiv形式）も入力として認識します。「ルビの出力形式」で選んだ形式に、コピー用テキスト・テキストダウンロードのルビ表記がすべて揃えられます。</p>
   <p class="hint">強調（傍点）: 「[[強調したい文字列]]」のように二重角括弧で囲むと、縦書きプレビューで文字の右側に傍点が付きます。日本語入力で全角になった「［［強調したい文字列］］」でも認識します。</p>
   <p class="hint">濁点の強制付与: 「{{あ}}」のように二重波括弧で囲むと、「あ゙」のように本来濁点が付かない文字にも濁点を付けられます（叫び声などの表現用）。全角「｛｛｝｝」でも認識します。</p>
-  <p class="hint">2段組み: 列をA4用紙1ページ分の幅ごとに上下2段へ分けて、本のページのように表示・印刷します。「1段の列数」を指定すると、自動計算の代わりにその列数ごとに次の段へ進みます（空欄なら自動）。</p>
+  <p class="hint">禁則処理: 列の先頭に「。」「」」「っ」「ー」などが、列の末尾に「「」「（」などが来ないように折り返し位置を調整します。「、」「。」は1文字だけ列の下にはみ出させ（ぶら下げ）、それ以外は前の列の文字を次の列へ送ります（追い出し）。「……」「――」の2連と縦中横の「!!」などは途中で分割しません。プレビュー上の折り返しのみに影響し、コピー用テキストは変わりません。</p>
+  <p class="hint">2段組み:列をA4用紙1ページ分の幅ごとに上下2段へ分けて、本のページのように表示・印刷します。「1段の列数」を指定すると、自動計算の代わりにその列数ごとに次の段へ進みます（空欄なら自動）。</p>
   <p class="hint">ページ数の目安: 1段組みのとき「1ページの行数」を指定すると、本文の列数（空行も1行として数えます）から大体のページ数を下の文字数欄に表示します（タイトル・著者名は含みません）。2段組みのときは、プレビューのページ数をそのまま表示します。</p>
   <p class="hint">原稿ファイルと同期: VS Code の Live Preview などローカルサーバー経由で開いているとき、このフォルダの「原稿.txt」を約1秒ごとに読み込み、変更があれば入力欄へ自動で流し込みます。同期中は入力欄を直接編集できません（原稿.txt 側を編集・保存してください）。ファイルを直接開いた場合（file://）は使えません。</p>
   <p class="hint">入力内容と各設定は、このブラウザ内（localStorage）に自動保存されます。ページを再読み込みしても消えません（他の端末やサーバーには送信されません）。</p>
@@ -487,6 +492,7 @@
   const convertEl = document.getElementById('convertPunctuation');
   const convertNumEl = document.getElementById('convertNumbers');
   const convertHyphenEl = document.getElementById('convertHyphen');
+  const kinsokuEl = document.getElementById('kinsoku');
   const twoColumnModeEl = document.getElementById('twoColumnMode');
   const columnsPerRowEl = document.getElementById('columnsPerRow');
   const linesPerPageEl = document.getElementById('linesPerPage');
@@ -644,21 +650,29 @@
     return tokens;
   }
 
-  // 段落を「1文字（傍点フラグ付き）」または「ルビ1個（本文の文字数分）」の単位に分解する
+  // 文字列を「縦書きで1マス（または分割できない2マス）を占める単位」に分割する。
+  // - 結合文字（濁点 U+3099 など）は直前の文字とまとめ、文字と濁点の間で列が切れないようにする
+  // - 縦中横で1マスに収める「!!」「!?」「?!」は1マスとして扱う（highlightCombined と同じ左からの最長一致）
+  // - 「……」「――」の2連は途中で分割しない（2マスの1単位として扱う）
+  const CELL_RE = /!!|!\?|\?!|……|‥‥|――|——|[\s\S]\p{M}*/gu;
+  const DOUBLE_CELLS = new Set(['……', '‥‥', '――', '——']);
+  function splitCells(text) {
+    return (text.match(CELL_RE) || []).map(function (cell) {
+      return { text: cell, len: DOUBLE_CELLS.has(cell) ? 2 : 1 };
+    });
+  }
+
+  // 段落を「1マス分の文字（傍点フラグ付き）」または「ルビ1個（本文の文字数分）」の単位に分解する
   function paragraphToUnits(paragraph) {
     const units = [];
     for (const t of tokenize(paragraph)) {
-      if (t.type === 'plain') {
-        for (const ch of Array.from(t.text)) {
-          units.push({ kind: 'char', text: ch, emphasis: false });
-        }
-      } else if (t.type === 'emphasis') {
-        for (const ch of Array.from(t.text)) {
-          units.push({ kind: 'char', text: ch, emphasis: true });
+      if (t.type === 'plain' || t.type === 'emphasis') {
+        for (const cell of splitCells(t.text)) {
+          units.push({ kind: 'char', text: cell.text, len: cell.len, emphasis: t.type === 'emphasis' });
         }
       } else if (t.type === 'dakuten') {
-        for (const ch of Array.from(t.text)) {
-          units.push({ kind: 'char', text: ch + '゙', emphasis: false });
+        for (const cell of splitCells(t.text)) {
+          units.push({ kind: 'char', text: cell.text + '゙', len: cell.len, emphasis: false });
         }
       } else {
         units.push({ kind: 'ruby', base: t.base, reading: t.reading, len: Array.from(t.base).length });
@@ -667,26 +681,82 @@
     return units;
   }
 
+  // 禁則処理の対象文字（JIS X 4051 の分類を参考に、小書き仮名・長音記号も含める厳しめの設定）
+  // 行頭禁則: 列の先頭に来てはいけない文字（閉じ括弧・句読点・感嘆符・中点・小書き仮名・長音記号など）
+  const KINSOKU_HEAD = new Set(Array.from(
+    '、。，．,.' +
+    '）)］]｝}〕〉》」』】〙〗〟’”｠»' +
+    '？！?!‼⁇⁈⁉' +
+    '・：；:;…‥' +
+    '‐゠–〜～' +
+    'ーヽヾゝゞ々〻' +
+    'ぁぃぅぇぉっゃゅょゎゕゖ' +
+    'ァィゥェォッャュョヮヵヶㇰㇱㇲㇳㇴㇵㇶㇷㇸㇹㇺㇻㇼㇽㇾㇿ'
+  ));
+  // 行末禁則: 列の末尾に来てはいけない文字（開き括弧）
+  const KINSOKU_TAIL = new Set(Array.from('（(［[｛{〔〈《「『【〘〖〝‘“｟«'));
+  // ぶら下げ: 列の下に1文字だけはみ出させてよい文字（句読点）
+  const KINSOKU_HANG = new Set(Array.from('、。，．,.'));
+  // 追い出しで前の列から次の列へ送る最大の単位数（これ以上送らないと解決できない場合は禁則を諦めて機械的に改列する）
+  const KINSOKU_MAX_PUSHBACK = 5;
+
+  function unitHeadChar(u) {
+    return Array.from(u.kind === 'char' ? u.text : u.base)[0];
+  }
+  function unitTailChar(u) {
+    // 結合文字（濁点など）は判定に使わないので取り除いてから末尾の文字を見る
+    const chars = Array.from((u.kind === 'char' ? u.text : u.base).replace(/\p{M}/gu, ''));
+    return chars[chars.length - 1];
+  }
+  function isHeadNG(u) { return u !== undefined && KINSOKU_HEAD.has(unitHeadChar(u)); }
+  function isTailNG(u) { return u !== undefined && KINSOKU_TAIL.has(unitTailChar(u)); }
+  function isHangable(u) { return u.kind === 'char' && u.len === 1 && KINSOKU_HANG.has(unitHeadChar(u)); }
+
+  // 追い出し: current の後ろから何単位を次の列へ送れば禁則に触れないかを探し、current に残す単位数を返す。
+  // 見つからなければ current をそのまま1列とする（禁則を諦める）。
+  function findBreakIndex(current, next) {
+    const minK = Math.max(1, current.length - KINSOKU_MAX_PUSHBACK);
+    for (let k = current.length; k >= minK; k--) {
+      const head = k < current.length ? current[k] : next;
+      if (!isHeadNG(head) && !isTailNG(current[k - 1])) return k;
+    }
+    return current.length;
+  }
+
   // n文字ごとに列分割する。ルビは本文の文字数で数え、列をまたいで分割しない。
-  function chunkUnits(units, n) {
+  // kinsoku が true のときは禁則処理を行う:
+  //   - 列に入りきらない次の文字が「、」「。」なら、その1文字だけ列の下にはみ出させる（ぶら下げ）
+  //   - それ以外で列頭・列末の禁則に触れる場合は、前の列の末尾の文字を次の列へ送る（追い出し）
+  function chunkUnits(units, n, kinsoku) {
     if (units.length === 0) return [[]];
     const columns = [];
     let current = [];
     let currentLen = 0;
-    for (const unit of units) {
-      const ulen = unit.kind === 'char' ? 1 : unit.len;
-      if (currentLen > 0 && currentLen + ulen > n) {
-        columns.push(current);
-        current = [];
-        currentLen = 0;
+    for (let i = 0; i < units.length; i++) {
+      const unit = units[i];
+      // 次の単位が入りきらないときにだけ改列する（ちょうど満杯の時点で改列すると、直後の句読点をぶら下げられないため）
+      if (current.length > 0 && currentLen + unit.len > n) {
+        // ぶら下げ。ただし直後がさらに行頭禁則（「。」」など）なら、ぶら下げても次の列頭が禁則になるので追い出しに回す
+        if (kinsoku && isHangable(unit) && !isHeadNG(units[i + 1])) {
+          current.push(unit);
+          columns.push(current);
+          current = [];
+          currentLen = 0;
+          continue;
+        }
+        const k = kinsoku ? findBreakIndex(current, unit) : current.length;
+        columns.push(current.slice(0, k));
+        current = current.slice(k);
+        currentLen = current.reduce(function (sum, u) { return sum + u.len; }, 0);
+        // 追い出した分と合わせても入りきらない場合（極端に長いルビなど）は、送った分だけで1列にする
+        if (current.length > 0 && currentLen + unit.len > n) {
+          columns.push(current);
+          current = [];
+          currentLen = 0;
+        }
       }
       current.push(unit);
-      currentLen += ulen;
-      if (currentLen >= n) {
-        columns.push(current);
-        current = [];
-        currentLen = 0;
-      }
+      currentLen += unit.len;
     }
     if (current.length > 0) columns.push(current);
     return columns;
@@ -699,11 +769,10 @@
   }
 
   // 「!!」「!?」「?!」は半角2文字を1マスに収める縦中横表示にする
+  // （左から順に1回の置換で判定し、文字数カウント用の splitCells と区切り方を揃える）
   function highlightCombined(escapedText) {
     return escapedText
-      .replace(/!!/g, '<span class="tcy">!!</span>')
-      .replace(/!\?/g, '<span class="tcy">!?</span>')
-      .replace(/\?!/g, '<span class="tcy">?!</span>');
+      .replace(/!!|!\?|\?!/g, '<span class="tcy">$&</span>');
   }
 
   // 半角アルファベットの連続（BBQなど）を検出し、1文字ずつ縦にまっすぐ並ぶよう個別にラップする。
@@ -1067,8 +1136,8 @@
     let totalChars = 0;
     for (const para of paragraphs) {
       const units = paragraphToUnits(para);
-      totalChars += units.reduce((sum, u) => sum + (u.kind === 'char' ? 1 : u.len), 0);
-      columns.push(...chunkUnits(units, n));
+      totalChars += units.reduce((sum, u) => sum + u.len, 0);
+      columns.push(...chunkUnits(units, n, kinsokuEl.checked));
     }
 
     // タイトル・著者名は任意入力。指定があれば本文の先頭（＝一番右）に大きめの文字で表示する。
@@ -1135,6 +1204,7 @@
     saveToStorage('convertPunctuation', convertEl.checked ? '1' : '0');
     saveToStorage('convertNumbers', convertNumEl.checked ? '1' : '0');
     saveToStorage('convertHyphen', convertHyphenEl.checked ? '1' : '0');
+    saveToStorage('kinsoku', kinsokuEl.checked ? '1' : '0');
     saveToStorage('twoColumnMode', twoColumnModeEl.checked ? '1' : '0');
     saveToStorage('columnsPerRow', columnsPerRowEl.value);
     saveToStorage('linesPerPage', linesPerPageEl.value);
@@ -1176,6 +1246,9 @@
     const savedHyphen = loadFromStorage('convertHyphen');
     if (savedHyphen !== null) convertHyphenEl.checked = savedHyphen === '1';
 
+    const savedKinsoku = loadFromStorage('kinsoku');
+    if (savedKinsoku !== null) kinsokuEl.checked = savedKinsoku === '1';
+
     const savedTwoCol = loadFromStorage('twoColumnMode');
     if (savedTwoCol !== null) twoColumnModeEl.checked = savedTwoCol === '1';
     columnsPerRowEl.disabled = !twoColumnModeEl.checked;
@@ -1203,7 +1276,7 @@
   }
 
   restoreSettings();
-  [inputEl, titleTextEl, authorTextEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl, twoColumnModeEl, columnsPerRowEl, linesPerPageEl].forEach(function (el) {
+  [inputEl, titleTextEl, authorTextEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl, kinsokuEl, twoColumnModeEl, columnsPerRowEl, linesPerPageEl].forEach(function (el) {
     el.addEventListener('input', scheduleUpdate);
   });
   clipStudioModeRadios.forEach(function (el) {
