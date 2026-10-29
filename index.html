@@ -197,6 +197,19 @@
     opacity: 0.7;
     margin: -0.5rem 0 1rem;
   }
+  .controls .control-button {
+    font-size: 0.85rem;
+    padding: 0.3em 0.7em;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--fg);
+    cursor: pointer;
+  }
+  .controls .control-button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
   .sync-status {
     font-size: 0.8rem;
     opacity: 0.7;
@@ -415,9 +428,17 @@
     </label>
     <label>
       <input type="checkbox" id="fileSyncEnabled">
-      原稿ファイル（原稿.txt）と同期する
-      <span id="fileSyncStatus" class="sync-status"></span>
+      原稿ファイルと同期する
     </label>
+    <label>原稿
+      <select id="manuscriptSelect" disabled></select>
+    </label>
+    <button type="button" id="manuscriptRefresh" class="control-button" disabled>一覧を更新</button>
+    <label>
+      <input type="checkbox" id="followEdit">
+      書いている箇所へプレビューを自動で移動する
+    </label>
+    <span id="fileSyncStatus" class="sync-status"></span>
   </div>
   <p class="hint">タイトル・著者名を入力すると、縦書きプレビューの一番右（先頭）に大きめの文字で表示されます（どちらも空欄なら表示されません）。テキスト・HTML出力や印刷にも反映されます。</p>
   <p class="hint">同人誌サイズ: 選択すると「1行の文字数」を判型ごとの目安に自動設定します。フォントサイズや余白で最適な字数は変わるため、あくまで目安です。「1行の文字数」を直接編集すると自動的に「カスタム」に戻ります。</p>
@@ -427,7 +448,7 @@
   <p class="hint">濁点の強制付与: 「{{あ}}」のように二重波括弧で囲むと、「あ゙」のように本来濁点が付かない文字にも濁点を付けられます（叫び声などの表現用）。全角「｛｛｝｝」でも認識します。</p>
   <p class="hint">2段組み: 列をA4用紙1ページ分の幅ごとに上下2段へ分けて、本のページのように表示・印刷します。「1段の列数」を指定すると、自動計算の代わりにその列数ごとに次の段へ進みます（空欄なら自動）。</p>
   <p class="hint">ページ数の目安: 1段組みのとき「1ページの行数」を指定すると、本文の列数（空行も1行として数えます）から大体のページ数を下の文字数欄に表示します（タイトル・著者名は含みません）。2段組みのときは、プレビューのページ数をそのまま表示します。</p>
-  <p class="hint">原稿ファイルと同期: VS Code の Live Preview などローカルサーバー経由で開いているとき、このフォルダの「原稿.txt」を約1秒ごとに読み込み、変更があれば入力欄へ自動で流し込みます。同期中は入力欄を直接編集できません（原稿.txt 側を編集・保存してください）。ファイルを直接開いた場合（file://）は使えません。</p>
+  <p class="hint">原稿ファイルと同期: VS Code の Live Preview などローカルサーバー経由で開いているとき、「原稿」で選んだファイルを約1秒ごとに読み込み、変更があれば入力欄へ自動で流し込みます。選べるのは、このフォルダの「原稿.txt」と「原稿」フォルダ内の .txt ファイルです（章ごとにファイルを分けたいときは「原稿」フォルダに置いてください）。同期中は入力欄を直接編集できません（選んだファイル側を編集・保存してください）。「書いている箇所へプレビューを自動で移動する」にチェックを入れると、原稿の変更を検知するたびに、変更された箇所が見える位置まで縦書きプレビューをスクロールします。ファイルを直接開いた場合（file://）は使えません。</p>
   <p class="hint">入力内容と各設定は、このブラウザ内（localStorage）に自動保存されます。ページを再読み込みしても消えません（他の端末やサーバーには送信されません）。</p>
 
   <div class="panes">
@@ -508,8 +529,16 @@
   const exportPdfEl = document.getElementById('exportPdf');
   const fileSyncEnabledEl = document.getElementById('fileSyncEnabled');
   const fileSyncStatusEl = document.getElementById('fileSyncStatus');
+  const manuscriptSelectEl = document.getElementById('manuscriptSelect');
+  const manuscriptRefreshEl = document.getElementById('manuscriptRefresh');
+  const followEditEl = document.getElementById('followEdit');
 
   let lastColumns = [];
+  // 各段落（入力の各行）が縦書きプレビューの何列目から始まるか。書いている箇所への自動移動で使う
+  let paragraphStartColumns = [];
+  // 同期する原稿ファイルの相対パス（例: 「原稿.txt」「原稿/第一章.txt」）。
+  // プルダウンの選択肢は非同期で読み込まれるため、select.value ではなくこの変数を保存・復元の基準にする
+  let selectedManuscript = '';
 
   const SAMPLE = '彼は静かに振り返った。\n「本当に、来たのか……！？」\n「ああ、来たとも！！」\n「そんな……？？」\n「じゃあ、あと10分で来るのか……？！」\n窓の外では雨が降り続いていた。時刻は23時。\n｜久遠《くおん》の闇の奥で、彼は本気《マジ》になった。\n「[[来るまで]]車で待つか」とだけ、彼は言った。\n「まだか-」と、廊下の奥から声がした。';
   const SAMPLE_TITLE = '久遠の闇';
@@ -1081,8 +1110,10 @@
 
     const paragraphs = converted.split('\n');
     const columns = [];
+    const startColumns = [];
     let totalChars = 0;
     for (const para of paragraphs) {
+      startColumns.push(columns.length);
       const units = paragraphToUnits(para);
       totalChars += units.reduce((sum, u) => sum + (u.kind === 'char' ? 1 : u.len), 0);
       columns.push(...chunkUnits(units, n));
@@ -1119,6 +1150,7 @@
     }
     statsEl.textContent = statsText;
     lastColumns = columns;
+    paragraphStartColumns = startColumns;
     persistSettings();
   }
 
@@ -1160,6 +1192,8 @@
     const checkedRadio = document.querySelector('input[name="clipStudioMode"]:checked');
     saveToStorage('clipStudioMode', checkedRadio ? checkedRadio.value : 'vertical');
     saveToStorage('fileSyncEnabled', fileSyncEnabledEl.checked ? '1' : '0');
+    saveToStorage('manuscriptFile', selectedManuscript);
+    saveToStorage('followEdit', followEditEl.checked ? '1' : '0');
   }
 
   function restoreSettings() {
@@ -1221,6 +1255,12 @@
 
     const savedFileSync = loadFromStorage('fileSyncEnabled');
     if (savedFileSync !== null) fileSyncEnabledEl.checked = savedFileSync === '1';
+
+    const savedFollowEdit = loadFromStorage('followEdit');
+    if (savedFollowEdit !== null) followEditEl.checked = savedFollowEdit === '1';
+
+    const savedManuscript = loadFromStorage('manuscriptFile');
+    if (savedManuscript) selectedManuscript = savedManuscript;
   }
 
   restoreSettings();
@@ -1336,15 +1376,20 @@
     window.print();
   });
 
-  // 原稿ファイル同期: ローカルサーバー経由で開いているときだけ、原稿.txt を定期的に読み込んで入力欄へ流し込む。
+  // 原稿ファイル同期: ローカルサーバー経由で開いているときだけ、選択中の原稿ファイルを定期的に読み込んで入力欄へ流し込む。
   // サーバーは保存済みの内容しか返さないため、エディタ側で保存されて初めて反映される。
   // 入力欄の現在値ではなく前回読み込んだ内容と比較し、ファイルが実際に変わったときだけ再描画する
   // （毎回再描画するとプレビューのスクロール位置などが落ち着かないため）。
-  const SYNC_FILE_URL = encodeURI('原稿.txt');
   const SYNC_INTERVAL_MS = 1000;
+  const MANUSCRIPT_LIST_INTERVAL_MS = 5000;
+  // 選択肢: ルートの原稿.txt（存在する場合）＋「原稿」フォルダ内の .txt ファイル
+  const ROOT_MANUSCRIPT = '原稿.txt';
+  const MANUSCRIPT_DIR = '原稿/';
   let syncTimer = null;
+  let manuscriptListTimer = null;
   let syncInFlight = false;
   let lastSyncedText = null;
+  let resetScrollOnNextLoad = false;
 
   function setSyncStatus(message) {
     fileSyncStatusEl.textContent = message ? '（' + message + '）' : '';
@@ -1406,60 +1451,210 @@
     inputClearEl.disabled = locked;
   }
 
+  // 前回の原稿と今回の原稿を先頭・末尾から突き合わせ、変更された範囲の末尾（＝カーソルがあると思われる位置）を返す
+  function findEditPosition(oldText, newText) {
+    const maxCommon = Math.min(oldText.length, newText.length);
+    let prefix = 0;
+    while (prefix < maxCommon && oldText[prefix] === newText[prefix]) prefix++;
+    let suffix = 0;
+    while (suffix < maxCommon - prefix &&
+      oldText[oldText.length - 1 - suffix] === newText[newText.length - 1 - suffix]) {
+      suffix++;
+    }
+    return newText.length - suffix;
+  }
+
+  // 変更位置を「何行目（段落）の何文字目か」に直し、縦書きプレビューのどの列かを求めてスクロールする。
+  // 記号変換・ルビ・字下げなどで表示上の文字数は多少変わるため、段落内の位置は文字数の割合で近似する
+  function scrollPreviewToEdit(oldText, newText) {
+    const pos = findEditPosition(oldText, newText);
+    const lineStart = newText.lastIndexOf('\n', pos - 1) + 1;
+    let lineEnd = newText.indexOf('\n', pos);
+    if (lineEnd === -1) lineEnd = newText.length;
+    const lineIndex = newText.slice(0, lineStart).split('\n').length - 1;
+    if (lineIndex >= paragraphStartColumns.length) return;
+
+    const startCol = paragraphStartColumns[lineIndex];
+    const nextStart = lineIndex + 1 < paragraphStartColumns.length ? paragraphStartColumns[lineIndex + 1] : lastColumns.length;
+    const colCount = Math.max(1, nextStart - startCol);
+    const lineLen = lineEnd - lineStart;
+    const ratio = lineLen > 0 ? (pos - lineStart) / lineLen : 0;
+    const colIndex = startCol + Math.min(colCount - 1, Math.floor(ratio * colCount));
+
+    // タイトル・著者名の列を除いた本文の列だけを数える（2段組みでページに詰め替えた後も並び順は同じ）
+    const bodyLines = previewEl.querySelectorAll('.v-line:not(.v-title):not(.v-author)');
+    const target = bodyLines[colIndex];
+    if (!target) return;
+
+    // すでに見えている場合は動かさない。見えていない場合だけ、その列がプレビュー中央に来るようにする
+    // （scrollIntoView はページ全体までスクロールしてしまうため、プレビュー枠内のスクロール量を直接調整する）
+    const view = previewEl.getBoundingClientRect();
+    const rect = target.getBoundingClientRect();
+    const visible = rect.left >= view.left && rect.right <= view.right &&
+      rect.top >= view.top && rect.bottom <= view.bottom;
+    if (visible) return;
+    previewEl.scrollLeft += (rect.left + rect.width / 2) - (view.left + view.width / 2);
+    previewEl.scrollTop += (rect.top + rect.height / 2) - (view.top + view.height / 2);
+  }
+
+  // 「原稿/第一章.txt」のような相対パスを、各部分をエンコードしたURLにする
+  function manuscriptUrl(path) {
+    return path.split('/').map(encodeURIComponent).join('/');
+  }
+
   function pollSyncFile() {
     if (syncInFlight) return;
+    const path = selectedManuscript;
+    if (!path) {
+      setInputLocked(false);
+      setSyncStatus('原稿ファイルが見つかりません');
+      return;
+    }
     syncInFlight = true;
-    fetch(SYNC_FILE_URL, { cache: 'no-store' })
+    fetch(manuscriptUrl(path), { cache: 'no-store' })
       .then(function (res) {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.arrayBuffer();
       })
       .then(function (buf) {
-        if (!fileSyncEnabledEl.checked) return;
+        // 読み込み中に同期を切った・別の原稿に切り替えた場合は、古い結果を捨てる
+        if (!fileSyncEnabledEl.checked || path !== selectedManuscript) return;
         setInputLocked(true);
         // サーバーの文字コード指定に頼らずUTF-8として読む（BOMはTextDecoderが除去する）。改行はCRLFをLFに揃える
         const text = new TextDecoder('utf-8').decode(buf).replace(/\r\n?/g, '\n');
         if (text !== lastSyncedText) {
+          const previousText = lastSyncedText;
           lastSyncedText = text;
           const scrollState = captureScrollState();
           inputEl.value = text;
           update();
-          restoreScrollState(scrollState);
+          if (resetScrollOnNextLoad) {
+            // 別の原稿に切り替えたときは、前の原稿の位置ではなく先頭から表示する
+            resetScrollOnNextLoad = false;
+            inputEl.scrollTop = 0;
+            previewEl.scrollLeft = 0;
+            previewEl.scrollTop = 0;
+          } else {
+            restoreScrollState(scrollState);
+            if (followEditEl.checked && previousText !== null) {
+              scrollPreviewToEdit(previousText, text);
+            }
+          }
         }
         setSyncStatus('同期中');
       })
       .catch(function () {
-        if (!fileSyncEnabledEl.checked) return;
+        if (!fileSyncEnabledEl.checked || path !== selectedManuscript) return;
         // 読み込めないときは入力欄を編集可能に戻し、手入力で使い続けられるようにする
         setInputLocked(false);
-        setSyncStatus('原稿.txt を読み込めません');
+        setSyncStatus(path + ' を読み込めません');
       })
       .then(function () {
         syncInFlight = false;
       });
   }
 
+  // 「原稿」フォルダの一覧は、サーバーが返すディレクトリ一覧ページ（Live Preview・python http.server 等）の
+  // リンク文字列から .txt のファイル名を拾って作る。一覧ページを返さないサーバーでは空になる。
+  // リンク先（href）はサーバーによって書式が違うため使わず、ファイル名から自分でURLを組み立てる
+  function fetchManuscriptDirList() {
+    return fetch(manuscriptUrl(MANUSCRIPT_DIR), { cache: 'no-store' })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.text();
+      })
+      .then(function (html) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const names = Array.from(doc.querySelectorAll('a'))
+          .map(function (a) { return a.textContent.trim(); })
+          .filter(function (name) { return /\.txt$/i.test(name) && name.indexOf('/') === -1; });
+        return Array.from(new Set(names))
+          .sort(function (a, b) { return a.localeCompare(b, 'ja', { numeric: true }); })
+          .map(function (name) { return MANUSCRIPT_DIR + name; });
+      })
+      .catch(function () { return []; });
+  }
+
+  function rootManuscriptExists() {
+    return fetch(manuscriptUrl(ROOT_MANUSCRIPT), { method: 'HEAD', cache: 'no-store' })
+      .then(function (res) { return res.ok; })
+      .catch(function () { return false; });
+  }
+
+  function refreshManuscriptList() {
+    return Promise.all([rootManuscriptExists(), fetchManuscriptDirList()]).then(function (results) {
+      const paths = (results[0] ? [ROOT_MANUSCRIPT] : []).concat(results[1]);
+      const current = Array.from(manuscriptSelectEl.options).map(function (o) { return o.value; });
+      // 開いているプルダウンを作り直すと閉じてしまうため、一覧が変わったときだけ作り直す
+      if (paths.join('\n') !== current.join('\n')) {
+        manuscriptSelectEl.innerHTML = '';
+        paths.forEach(function (path) {
+          const option = document.createElement('option');
+          option.value = path;
+          option.textContent = path;
+          manuscriptSelectEl.appendChild(option);
+        });
+      }
+      // 選択中のファイルが消えた（または未選択の）場合は先頭のファイルに切り替える
+      if (paths.indexOf(selectedManuscript) === -1) {
+        selectManuscript(paths.length > 0 ? paths[0] : '');
+      }
+      manuscriptSelectEl.value = selectedManuscript;
+    });
+  }
+
+  function selectManuscript(path) {
+    if (path === selectedManuscript) return;
+    selectedManuscript = path;
+    lastSyncedText = null;
+    resetScrollOnNextLoad = true;
+    persistSettings();
+  }
+
   // file:// で開いた場合はブラウザの制限でファイルを読み込めないため、同期を始めない
   function applyFileSyncState() {
     clearInterval(syncTimer);
+    clearInterval(manuscriptListTimer);
     syncTimer = null;
+    manuscriptListTimer = null;
     lastSyncedText = null;
     const canSync = location.protocol !== 'file:';
+    const active = fileSyncEnabledEl.checked && canSync;
     setInputLocked(false);
+    manuscriptSelectEl.disabled = !active;
+    manuscriptRefreshEl.disabled = !active;
     if (!fileSyncEnabledEl.checked) {
       setSyncStatus('');
     } else if (!canSync) {
       setSyncStatus('ファイルを直接開いているため使えません。Live Preview で開いてください');
     } else {
       setSyncStatus('読み込み中');
-      pollSyncFile();
-      syncTimer = setInterval(pollSyncFile, SYNC_INTERVAL_MS);
+      refreshManuscriptList().then(function () {
+        if (!fileSyncEnabledEl.checked) return;
+        pollSyncFile();
+        syncTimer = setInterval(pollSyncFile, SYNC_INTERVAL_MS);
+        // 原稿フォルダにファイルを追加・削除したときのために一覧も定期的に取り直す（プルダウン操作中は除く）
+        manuscriptListTimer = setInterval(function () {
+          if (document.activeElement !== manuscriptSelectEl) refreshManuscriptList();
+        }, MANUSCRIPT_LIST_INTERVAL_MS);
+      });
     }
   }
 
   fileSyncEnabledEl.addEventListener('input', function () {
     applyFileSyncState();
     persistSettings();
+  });
+
+  manuscriptSelectEl.addEventListener('change', function () {
+    selectManuscript(manuscriptSelectEl.value);
+    pollSyncFile();
+  });
+
+  followEditEl.addEventListener('input', persistSettings);
+
+  manuscriptRefreshEl.addEventListener('click', function () {
+    refreshManuscriptList();
   });
 
   update();
