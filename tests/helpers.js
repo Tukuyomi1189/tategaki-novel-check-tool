@@ -23,6 +23,7 @@ const SETTING_IDS = {
   kinsoku: 'kinsoku',
   tcyDigits: 'tcyDigits',
   pageBreak: 'pageBreak',
+  typoCheck: 'typoCheck',
   twoColumnMode: 'twoColumnMode',
   columnsPerRow: 'columnsPerRow',
   linesPerPage: 'linesPerPage',

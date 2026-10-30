@@ -12,6 +12,8 @@
     --panel-bg: #ffffff;
     --border: #ddd;
     --accent: #8a4b3b;
+    --typo: #d0021b;
+    --typo-bg: rgba(208, 2, 27, 0.12);
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -20,6 +22,8 @@
       --panel-bg: #2a2a2a;
       --border: #444;
       --accent: #e0987c;
+      --typo: #ff6b6b;
+      --typo-bg: rgba(255, 107, 107, 0.22);
     }
   }
   * { box-sizing: border-box; }
@@ -185,6 +189,11 @@
     text-emphasis-position: over right;
     -webkit-text-emphasis-style: filled dot;
     -webkit-text-emphasis-color: var(--accent);
+  }
+  /* 誤字の可能性がある箇所。半角スペースや句読点も目に入るよう、文字だけでなく背景にも色を付ける */
+  .v-line .typo {
+    color: var(--typo);
+    background: var(--typo-bg);
   }
   .tcy {
     text-combine-upright: all;
@@ -403,6 +412,11 @@
       break-after: page;
       page-break-after: always;
     }
+    /* 誤字チェックの色は画面で確認するためのもので、印刷には出さない */
+    .v-line .typo {
+      color: inherit;
+      background: none;
+    }
     .print-page:last-child {
       break-after: auto;
       page-break-after: auto;
@@ -476,6 +490,10 @@
     <label>
       <input type="checkbox" id="pageBreak" checked>
       改ページ記法（［＃改ページ］／[newpage]）を反映する
+    </label>
+    <label>
+      <input type="checkbox" id="typoCheck" checked>
+      誤字の可能性がある箇所をプレビューで赤く表示する
     </label>
     <label>
       <input type="checkbox" id="twoColumnMode">
@@ -561,6 +579,10 @@
     <details class="hint-item">
       <summary>改ページ</summary>
       <p class="hint">「［＃改ページ］」（青空文庫）または「[newpage]」（pixiv）だけを書いた行で、次のページから始めます。2段組み・印刷では次のページへ送り、1段組みのプレビューでは区切り線を表示します。コピー用テキストとテキストダウンロードでは「ルビの出力形式」に合わせた記法に揃えます。</p>
+    </details>
+    <details class="hint-item">
+      <summary>誤字チェック</summary>
+      <p class="hint">日本語の文章ではまず正しくならない次のような並びを、縦書きプレビュー上で赤く表示し、下の文字数欄に件数を出します。句読点の連続（、、／。。／、。）、助詞の重複（をを／がが／にに。3つ以上続くものは叫び声などとみなして除く）、閉じかっこ直前の読点（、」）、段落の先頭の句読点、日本語の間の半角スペース、段落内で対応の取れていないかっこ（「」『』（）【】。開き・閉じの片方だけ、または種類の違う組み合わせ）、奇数個の「…」「―」（2つ重ねて使うのが一般的な表記ルールのため）。機械的な判定なので、意図した表記まで赤くなることがあります。画面のプレビューだけの表示で、コピー用テキスト・HTML保存・PDF印刷には影響しません。</p>
     </details>
     <details class="hint-item">
       <summary>2段組み</summary>
@@ -659,6 +681,7 @@
   const kinsokuEl = document.getElementById('kinsoku');
   const tcyDigitsEl = document.getElementById('tcyDigits');
   const pageBreakEl = document.getElementById('pageBreak');
+  const typoCheckEl = document.getElementById('typoCheck');
   const pageFramesEl = document.getElementById('pageFrames');
   const fitPreviewEl = document.getElementById('fitPreview');
   const settingsEl = document.getElementById('settings');
@@ -897,6 +920,65 @@
     return units;
   }
 
+  // 誤字チェック: 日本語の文章ではまず正しくならない並びだけに絞り、誤検出を少なくする。
+  // 段落ごとに、単位の文字（ルビは本文の文字）をつないだ文字列に対して調べるので、列の境目をまたぐ箇所も見つかる
+  const JA_CHAR = '[\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}ー々]';
+  const TYPO_RULES = [
+    /[、。，．]{2,}/gu, // 句読点の連続（、、／。。／、。）
+    /(?<![をがに])([をがに])\1(?![をがに])/gu, // 助詞の重複（をを／がが／にに）。3つ以上続くもの（叫び声など）は除く
+    /、(?=[」』）)])/gu, // 閉じかっこ直前の読点
+    /(?<=^[\s　]*)[、。]/gu, // 段落の先頭の句読点
+    new RegExp('(?<=' + JA_CHAR + '|[、。])[ ]+(?=' + JA_CHAR + ')', 'gu'), // 日本語の間の半角スペース
+    /(?<!…)…(?:……)*(?!…)/gu, // 奇数個の三点リーダー（2つ重ねるのが一般的）
+    /(?<!―)―(?:――)*(?!―)/gu, // 奇数個のダッシュ（同上）
+  ];
+  const BRACKET_PAIRS = { '「': '」', '『': '』', '（': '）', '(': ')', '【': '】' };
+  const CLOSING_BRACKETS = new Set(Object.values(BRACKET_PAIRS));
+
+  // 段落内で対応の取れていないかっこに印を付ける（種類の違う閉じかっこは、閉じかっこ・開きかっこの両方に付く）
+  function markUnmatchedBrackets(text, flagged) {
+    const stack = [];
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (BRACKET_PAIRS[ch]) {
+        stack.push(i);
+      } else if (CLOSING_BRACKETS.has(ch)) {
+        if (stack.length > 0 && BRACKET_PAIRS[text[stack[stack.length - 1]]] === ch) {
+          stack.pop();
+        } else {
+          flagged[i] = 1;
+        }
+      }
+    }
+    for (const i of stack) flagged[i] = 1;
+  }
+
+  // 1段落分の単位のうち、誤字の可能性がある箇所に掛かる単位に typo: true を付け、見つかった箇所の数を返す。
+  // 複数のルールが同じ文字に当たっても二重に数えないよう、印の付いた文字のひと続きを1箇所と数える
+  function markTypos(units) {
+    let text = '';
+    const starts = [];
+    for (const u of units) {
+      starts.push(text.length);
+      text += u.kind === 'char' ? u.text : u.base;
+    }
+    starts.push(text.length);
+    const flagged = new Uint8Array(text.length);
+    markUnmatchedBrackets(text, flagged);
+    for (const re of TYPO_RULES) {
+      for (const m of text.matchAll(re)) flagged.fill(1, m.index, m.index + m[0].length);
+    }
+    let count = 0;
+    for (let i = 0; i < flagged.length; i++) {
+      if (flagged[i] && !flagged[i - 1]) count++;
+    }
+    if (count === 0) return 0;
+    units.forEach(function (u, i) {
+      if (flagged.subarray(starts[i], starts[i + 1]).includes(1)) u.typo = true;
+    });
+    return count;
+  }
+
   // 禁則処理の対象文字（JIS X 4051 の分類を参考に、小書き仮名・長音記号も含める厳しめの設定）
   // 行頭禁則: 列の先頭に来てはいけない文字（閉じ括弧・句読点・感嘆符・中点・小書き仮名・長音記号など）
   const KINSOKU_HEAD = new Set(Array.from(
@@ -1018,12 +1100,13 @@
     return html;
   }
 
-  // 1列分の単位を HTML にする。傍点は連続する範囲をまとめて1つのspanで囲み、縦中横の単位は個別のspanにする
+  // 1列分の単位を HTML にする。傍点・誤字チェックの印は連続する範囲をまとめて1つのspanで囲み、縦中横の単位は個別のspanにする
   function renderColumn(units) {
     let html = '';
     let groupHtml = '';
     let buffer = '';
     let groupEmphasis = false;
+    let groupTypo = false;
     function flushText() {
       if (buffer) {
         groupHtml += renderInlineText(buffer, false);
@@ -1033,14 +1116,17 @@
     function flushGroup() {
       flushText();
       if (groupHtml) {
+        if (groupTypo) groupHtml = '<span class="typo">' + groupHtml + '</span>';
         html += groupEmphasis ? '<span class="bouten">' + groupHtml + '</span>' : groupHtml;
         groupHtml = '';
       }
     }
     for (const u of units) {
       if (u.kind === 'char') {
-        if ((buffer || groupHtml) && u.emphasis !== groupEmphasis) flushGroup();
+        const typo = Boolean(u.typo);
+        if ((buffer || groupHtml) && (u.emphasis !== groupEmphasis || typo !== groupTypo)) flushGroup();
         groupEmphasis = u.emphasis;
+        groupTypo = typo;
         if (u.tcy) {
           flushText();
           groupHtml += '<span class="tcy">' + escapeHtml(u.text) + '</span>';
@@ -1049,7 +1135,8 @@
         }
       } else {
         flushGroup();
-        html += '<ruby>' + escapeHtml(u.base) + '<rt>' + escapeHtml(u.reading) + '</rt></ruby>';
+        const rubyHtml = '<ruby>' + escapeHtml(u.base) + '<rt>' + escapeHtml(u.reading) + '</rt></ruby>';
+        html += u.typo ? '<span class="typo">' + rubyHtml + '</span>' : rubyHtml;
       }
     }
     flushGroup();
@@ -1522,6 +1609,8 @@
     const pageBreaks = new Set();
     let breakPending = false;
     let totalChars = 0;
+    const typoCheck = typoCheckEl.checked;
+    let typoCount = 0;
     for (const para of paragraphs) {
       startColumns.push(columns.length);
       if (pageBreakEnabled && PAGE_BREAK_LINE_RE.test(para)) {
@@ -1533,7 +1622,8 @@
         breakPending = false;
       }
       const units = paragraphToUnits(para);
-      totalChars += units.reduce((sum, u) => sum + u.len, 0);
+      if (typoCheck) typoCount += markTypos(units);
+      totalChars +=units.reduce((sum, u) => sum + u.len, 0);
       columns.push(...chunkUnits(units, n, kinsokuEl.checked));
     }
 
@@ -1572,6 +1662,7 @@
         statsText += '　／　約' + estimatePageCount(columns.length, pageBreaks, linesPerPage) + 'ページ（1ページ ' + linesPerPage + '行）';
       }
     }
+    if (typoCount > 0) statsText += '　／　誤字の可能性: ' + typoCount + '箇所';
     statsEl.textContent = statsText;
     lastColumns = columns;
     paragraphStartColumns = startColumns;
@@ -1614,6 +1705,7 @@
     saveToStorage('kinsoku', kinsokuEl.checked ? '1' : '0');
     saveToStorage('tcyDigits', tcyDigitsEl.checked ? '1' : '0');
     saveToStorage('pageBreak', pageBreakEl.checked ? '1' : '0');
+    saveToStorage('typoCheck', typoCheckEl.checked ? '1' : '0');
     saveToStorage('twoColumnMode', twoColumnModeEl.checked ? '1' : '0');
     saveToStorage('columnsPerRow', columnsPerRowEl.value);
     saveToStorage('linesPerPage', linesPerPageEl.value);
@@ -1673,6 +1765,9 @@
 
     const savedPageBreak = loadFromStorage('pageBreak');
     if (savedPageBreak !== null) pageBreakEl.checked = savedPageBreak === '1';
+
+    const savedTypoCheck = loadFromStorage('typoCheck');
+    if (savedTypoCheck !== null) typoCheckEl.checked = savedTypoCheck === '1';
 
     const savedTwoCol = loadFromStorage('twoColumnMode');
     if (savedTwoCol !== null) twoColumnModeEl.checked = savedTwoCol === '1';
@@ -1745,7 +1840,7 @@
   hintsEl.addEventListener('toggle', function () {
     saveToStorage('hintsOpen', hintsEl.open ? '1' : '0');
   });
-  [inputEl, titleTextEl, authorTextEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl, autoIndentEl, convertDakutenEl, tcyDigitsEl, pageBreakEl, kinsokuEl, twoColumnModeEl, columnsPerRowEl, linesPerPageEl, pageFramesEl, fitPreviewEl].forEach(function (el) {
+  [inputEl, titleTextEl, authorTextEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl, autoIndentEl, convertDakutenEl, tcyDigitsEl, pageBreakEl, typoCheckEl, kinsokuEl, twoColumnModeEl, columnsPerRowEl, linesPerPageEl, pageFramesEl, fitPreviewEl].forEach(function (el) {
     el.addEventListener('input', scheduleUpdate);
   });
   clipStudioModeRadios.forEach(function (el) {
