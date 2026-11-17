@@ -140,21 +140,58 @@
   .v-line:empty {
     min-width: 1em;
   }
-  /* 改ページ記法の位置（ページ枠に分けない表示のときだけ、区切り線で示す） */
+  .vertical-preview:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  /* 2段組みは2段分の高さが要るので、欄を高めにする（欄の大きさを手で変えた場合はそちらが優先） */
+  .vertical-preview.is-two-column {
+    height: 85vh;
+  }
+  /* 改ページ記法の位置（ページ枠に分けない表示のときだけ、区切り線で示す）。
+     線は次の列の長さに関係なく欄の高さいっぱいに引き、線の脇に「改ページ」と小さく添える */
   .vertical-preview > .v-line[data-page-break] {
+    position: relative;
+    align-self: stretch;
     margin-right: 0.8em;
     padding-right: 0.8em;
     border-right: 2px dashed var(--accent);
   }
+  .vertical-preview > .v-line[data-page-break]::after {
+    content: "改ページ";
+    position: absolute;
+    top: 0;
+    right: 0.1em;
+    font-size: 0.5em;
+    line-height: 1;
+    color: var(--accent);
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+  }
+  /* タイトル・著者名は1列に収まるよう、長いときだけ --v-title-scale / --v-author-scale で小さくする（本文の大きさは変えない） */
   .v-title {
-    font-size: calc(var(--v-font-size, 1.3rem) * 2 / 1.3);
+    font-size: calc(var(--v-font-size, 1.3rem) * 2 / 1.3 * var(--v-title-scale, 1));
     font-weight: 700;
     letter-spacing: 0.2em;
     margin-right: 0.3em;
   }
   .v-author {
-    font-size: calc(var(--v-font-size, 1.3rem) / 1.3);
+    font-size: calc(var(--v-font-size, 1.3rem) / 1.3 * var(--v-author-scale, 1));
     margin-right: 0.6em;
+  }
+  /* ページ枠・2段組みのページ番号（画面だけ。印刷用のページ .print-page には付かない） */
+  .vertical-preview {
+    counter-reset: preview-page;
+  }
+  .preview-page {
+    counter-increment: preview-page;
+  }
+  .preview-page::after {
+    content: counter(preview-page);
+    margin-top: auto;
+    align-self: center;
+    font-size: 0.7rem;
+    line-height: 1;
+    opacity: 0.6;
   }
   .page-row {
     display: flex;
@@ -195,13 +232,100 @@
     color: var(--typo);
     background: var(--typo-bg);
   }
+  /* 半角スペースは縦書きだと細い線にしか見えないため、枠を付けて目立たせる（列の長さは変えない） */
+  .v-line .typo-space {
+    box-shadow: 0 0 0 0.12em var(--typo);
+  }
+  /* 「前の誤字／次の誤字」で選んでいる箇所 */
+  .v-line .typo-current {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  /* 結合文字の濁点・半濁点（あ゙・う゚など）。濁点そのものは大きさ0にして、単独の「゛」「゜」を文字の右上に重ねる */
+  .v-line .dakuten,
+  .v-line .handakuten {
+    position: relative;
+  }
+  .v-line .dakuten-mark {
+    font-size: 0;
+  }
+  .v-line .dakuten::after,
+  .v-line .handakuten::after {
+    position: absolute;
+    top: 0;
+    left: 0;
+    /* 傍点の範囲内でも、重ねた濁点に傍点が付いて二重にならないようにする */
+    text-emphasis: none;
+    -webkit-text-emphasis: none;
+  }
+  .v-line .dakuten::after {
+    content: "\309B";
+    transform: translateY(-0.25em);
+  }
+  .v-line .handakuten::after {
+    content: "\309C";
+    /* 単独の「゜」は「゛」より右下寄りに描かれるので、合成済みの「ぱ」などと同じ位置まで寄せる */
+    transform: translate(-0.3em, -0.95em);
+  }
   .tcy {
     text-combine-upright: all;
     -webkit-text-combine: horizontal;
   }
-  /* 半角アルファベットの連続（BBQなど）を横倒しの連結表示にせず、1文字ずつ縦にまっすぐ並べる */
+  /* 大文字だけの短い略語（BBQ・OKなど）は1文字ずつ縦にまっすぐ並べる。それ以外の英単語は横倒しのまま（縦書きの既定）にする */
   .latin-upright {
     text-orientation: upright;
+  }
+  /* 縦書きプレビューの操作欄（拡大表示・誤字の移動・クリックした列の行番号） */
+  .preview-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 1rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.82rem;
+  }
+  .preview-toolbar .tool-group {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .preview-toolbar button {
+    font-size: 0.82rem;
+    padding: 0.3em 0.7em;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--fg);
+    cursor: pointer;
+  }
+  .preview-toolbar button:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .preview-toolbar button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .preview-toolbar .tool-status {
+    opacity: 0.75;
+  }
+  /* 拡大表示: プレビュー欄を画面いっぱいに広げる（Fullscreen API は VS Code の埋め込みプレビューで使えないことがあるため、CSSで重ねる） */
+  .pane.preview-expanded {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    margin: 0;
+    border-radius: 0;
+  }
+  .pane.preview-expanded .vertical-preview {
+    flex: 1 1 auto;
+    height: auto !important;
+    min-height: 0;
+    max-height: none;
+    resize: none;
+  }
+  body.preview-expanded-open {
+    overflow: hidden;
   }
   .stats {
     margin-top: 0.6rem;
@@ -412,10 +536,15 @@
       break-after: page;
       page-break-after: always;
     }
+    .preview-toolbar {
+      display: none !important;
+    }
     /* 誤字チェックの色は画面で確認するためのもので、印刷には出さない */
     .v-line .typo {
       color: inherit;
       background: none;
+      box-shadow: none;
+      outline: none;
     }
     .print-page:last-child {
       break-after: auto;
@@ -436,6 +565,10 @@
   <div class="controls">
     <label>タイトル
       <input type="text" id="titleText" placeholder="（任意）" class="text-input">
+    </label>
+    <label>
+      <input type="checkbox" id="firstLineTitle">
+      原稿の1行目をタイトルにする
     </label>
     <label>著者名
       <input type="text" id="authorText" placeholder="（任意）" class="text-input">
@@ -546,7 +679,15 @@
     <summary>使い方の説明</summary>
     <details class="hint-item">
       <summary>タイトル・著者名</summary>
-      <p class="hint">タイトル・著者名を入力すると、縦書きプレビューの一番右（先頭）に大きめの文字で表示されます（どちらも空欄なら表示されません）。テキスト・HTML出力や印刷にも反映されます。</p>
+      <p class="hint">タイトル・著者名を入力すると、縦書きプレビューの一番右（先頭）に大きめの文字で表示されます（どちらも空欄なら表示されません）。テキスト・HTML出力や印刷にも反映されます。長くて1列に収まらないときは、タイトル・著者名の文字だけを小さくして収めます（本文の6割の大きさまで）。「原稿の1行目をタイトルにする」をオンにすると、原稿の1行目をタイトルとして表示し、本文からは外します（1行目の直後の空行も外します。コピー用テキストは原稿のまま）。オフに戻すと、手で入力していたタイトルに戻ります。</p>
+    </details>
+    <details class="hint-item">
+      <summary>プレビューの操作</summary>
+      <p class="hint">「拡大表示」でプレビュー欄だけを画面いっぱいに広げます（もう一度押すか Esc で戻る）。「◀ 次の誤字」「前の誤字 ▶」で誤字チェックの印を1か所ずつ移動し、理由を表示します。列をクリックすると原稿の何行目かを表示し、同期していないときは入力欄をその行までスクロールします（入力欄にカーソルは移さないので、続けてキーを押しても原稿は変わりません）。列が欄に収まっているときはマウスホイールで左右に読み進められ、プレビューを選んでいるときは PageDown・スペースで1画面（ページ枠なら1ページ）先へ、PageUp・Shift+スペースで戻り、Home／End で先頭／末尾へ移動します。</p>
+    </details>
+    <details class="hint-item">
+      <summary>英単語の向き</summary>
+      <p class="hint">大文字だけで4字までの略語（BBQ・OKなど）は1文字ずつ縦にまっすぐ並べ、それ以外の英単語（Trick・Helloなど）は横に寝かせて単語として読めるように表示します。向きは単語全体で決めるので、列の境目で分かれても同じ向きのままです。</p>
     </details>
     <details class="hint-item">
       <summary>同人誌サイズ</summary>
@@ -578,23 +719,23 @@
     </details>
     <details class="hint-item">
       <summary>改ページ</summary>
-      <p class="hint">「［＃改ページ］」（青空文庫）または「[newpage]」（pixiv）だけを書いた行で、次のページから始めます。2段組み・印刷では次のページへ送り、1段組みのプレビューでは区切り線を表示します。コピー用テキストとテキストダウンロードでは「ルビの出力形式」に合わせた記法に揃えます。</p>
+      <p class="hint">「［＃改ページ］」（青空文庫）または「[newpage]」（pixiv）だけを書いた行で、次のページから始めます。2段組み・印刷では次のページへ送り、1段組みのプレビューでは欄の高さいっぱいの区切り線と「改ページ」の文字を表示します。コピー用テキストとテキストダウンロードでは「ルビの出力形式」に合わせた記法に揃えます。</p>
     </details>
     <details class="hint-item">
       <summary>誤字チェック</summary>
-      <p class="hint">日本語の文章ではまず正しくならない次のような並びを、縦書きプレビュー上で赤く表示し、下の文字数欄に件数を出します。句読点の連続（、、／。。／、。）、助詞の重複（をを／がが／にに。3つ以上続くものは叫び声などとみなして除く）、閉じかっこ直前の読点（、」）、段落の先頭の句読点、日本語の間の半角スペース、段落内で対応の取れていないかっこ（「」『』（）【】。開き・閉じの片方だけ、または種類の違う組み合わせ）、奇数個の「…」「―」（2つ重ねて使うのが一般的な表記ルールのため）。機械的な判定なので、意図した表記まで赤くなることがあります。画面のプレビューだけの表示で、コピー用テキスト・HTML保存・PDF印刷には影響しません。</p>
+      <p class="hint">日本語の文章ではまず正しくならない次のような並びを、縦書きプレビュー上で赤く表示し、下の文字数欄に件数を出します。句読点の連続（、、／。。／、。）、助詞の重複（をを／がが／にに。3つ以上続くものは叫び声などとみなして除く）、閉じかっこ直前の読点（、」）、段落の先頭の句読点、日本語の間の半角スペース、段落内で対応の取れていないかっこ（「」『』（）【】。開き・閉じの片方だけ、または種類の違う組み合わせ）、奇数個の「…」「―」（2つ重ねて使うのが一般的な表記ルールのため）。赤い箇所にマウスを載せると理由を表示し、プレビューの「◀ 次の誤字」「前の誤字 ▶」で1か所ずつ移動できます。半角スペースには赤い枠も付けます。機械的な判定なので、意図した表記まで赤くなることがあります。画面のプレビューだけの表示で、コピー用テキスト・HTML保存・PDF印刷には影響しません。</p>
     </details>
     <details class="hint-item">
       <summary>2段組み</summary>
-      <p class="hint">列をA4用紙1ページ分の幅ごとに上下2段へ分けて、本のページのように表示・印刷します。「1段の列数」を指定すると、自動計算の代わりにその列数ごとに次の段へ進みます（空欄なら自動）。</p>
+      <p class="hint">列をA4用紙1ページ分の幅ごとに上下2段へ分けて、本のページのように表示・印刷します。「1段の列数」を指定すると、自動計算の代わりにその列数ごとに次の段へ進みます（空欄なら自動）。2段分の高さが要るため、プレビュー欄を画面の85%の高さに広げ、各ページの下にページ番号を表示します（ページ番号は画面とHTML保存だけ）。</p>
     </details>
     <details class="hint-item">
       <summary>文字の大きさ調整</summary>
-      <p class="hint">「プレビューの文字の大きさを欄の高さに合わせる」を ON にすると、1列（「1行の文字数」＋ぶら下げ分の1字）がプレビュー欄の高さにちょうど収まるよう、縦書きプレビューの文字を小さくします（通常より大きくはしません）。縦にスクロールしなくても列の最後まで読めるようになります。2段組み・ページ枠のときは、ページの枠ごと収まる大きさにします。スマホなど幅の狭い画面では、最初から ON になっています。プレビュー欄の大きさを変えると自動で計算し直します。画面のプレビューだけの調整で、HTML保存・PDF印刷の文字の大きさは変わりません。</p>
+      <p class="hint">「プレビューの文字の大きさを欄の高さに合わせる」を ON にすると、1列（「1行の文字数」＋ぶら下げ分の1字）がプレビュー欄の高さにちょうど収まるよう、縦書きプレビューの文字を小さくします（通常より大きくはしません）。縦にスクロールしなくても列の最後まで読めるようになります。2段組み・ページ枠のときは、ページの枠ごと収まる大きさにします。スマホなど幅の狭い画面や、初めて開いたときに1列が欄に収まらない文字数のときは、最初から ON になっています。プレビュー欄の大きさを変えると（「拡大表示」を含む）自動で計算し直します。画面のプレビューだけの調整で、HTML保存・PDF印刷の文字の大きさは変わりません。</p>
     </details>
     <details class="hint-item">
       <summary>1段組みのページ枠</summary>
-      <p class="hint">1段組みのとき、「1ページの行数」ごとに列を区切って本のページのような枠で表示・印刷します（「1ページの行数」が空欄のときは使えません）。タイトル・著者名は1ページ目の先頭の列として数えます。</p>
+      <p class="hint">1段組みのとき、「1ページの行数」ごとに列を区切って本のページのような枠で表示・印刷します（「1ページの行数」が空欄のときは使えません）。タイトル・著者名は1ページ目の先頭の列として数えます。各ページの下にページ番号を表示します（画面とHTML保存だけ）。</p>
     </details>
     <details class="hint-item">
       <summary>ページ数の目安</summary>
@@ -606,7 +747,7 @@
     </details>
     <details class="hint-item">
       <summary>原稿ファイルと同期</summary>
-      <p class="hint">VS Code の Live Preview などローカルサーバー経由で開いているとき、「原稿」で選んだファイルを約1秒ごとに読み込み、変更があれば入力欄へ自動で流し込みます。選べるのは、このフォルダの「原稿.txt」と「原稿」フォルダ内の .txt ファイルです（章ごとにファイルを分けたいときは「原稿」フォルダに置いてください）。同期中は入力欄を直接編集できません（選んだファイル側を編集・保存してください）。「書いている箇所へプレビューを自動で移動する」にチェックを入れると、原稿の変更を検知するたびに、変更された箇所が見える位置まで縦書きプレビューをスクロールします。ファイルを直接開いた場合（file://）は使えません。</p>
+      <p class="hint">VS Code の Live Preview などローカルサーバー経由で開いているとき、「原稿」で選んだファイルを約1秒ごとに読み込み、変更があれば入力欄へ自動で流し込みます。選べるのは、このフォルダの「原稿.txt」と「原稿」フォルダ内の .txt ファイルです（章ごとにファイルを分けたいときは「原稿」フォルダに置いてください。「原稿/第1部/第1章.txt」のようにサブフォルダの中のファイルも選べます）。同期中は入力欄を直接編集できません（選んだファイル側を編集・保存してください）。「書いている箇所へプレビューを自動で移動する」にチェックを入れると、原稿の変更を検知するたびに、変更された箇所が見える位置まで縦書きプレビューをスクロールします。ファイルを直接開いた場合（file://）は使えません。</p>
     </details>
     <details class="hint-item">
       <summary>自動保存</summary>
@@ -656,7 +797,18 @@
           <button type="button" id="exportPdf" aria-label="PDFとして印刷"><span class="label-long">PDFとして印刷</span><span class="label-short">PDF印刷</span></button>
         </div>
       </div>
-      <div id="verticalPreview" class="vertical-preview"></div>
+      <div class="preview-toolbar">
+        <div class="tool-group">
+          <button type="button" id="previewExpand" aria-pressed="false">拡大表示</button>
+        </div>
+        <div class="tool-group">
+          <button type="button" id="typoNext" disabled aria-label="次の誤字へ移動"><span class="label-long">◀ 次の誤字</span><span class="label-short">◀ 次</span></button>
+          <button type="button" id="typoPrev" disabled aria-label="前の誤字へ移動"><span class="label-long">前の誤字 ▶</span><span class="label-short">前 ▶</span></button>
+          <span id="typoNavStatus" class="tool-status"></span>
+        </div>
+        <span id="columnSourceStatus" class="tool-status" aria-live="polite">列をクリックすると原稿の行番号を表示します</span>
+      </div>
+      <div id="verticalPreview" class="vertical-preview" tabindex="0" aria-label="縦書きプレビュー（PageDown / PageUp・スペースキーで読み進める）"></div>
       <div class="stats" id="stats"></div>
     </div>
   </div>
@@ -666,6 +818,9 @@
   const inputEl = document.getElementById('inputText');
   const inputClearEl = document.getElementById('inputClear');
   const titleTextEl = document.getElementById('titleText');
+  const firstLineTitleEl = document.getElementById('firstLineTitle');
+  // 手で入力したタイトル。「原稿の1行目をタイトルにする」の間はタイトル欄に1行目を表示するため、別に控えて保存する
+  let manualTitle = '';
   const authorTextEl = document.getElementById('authorText');
   const outputEl = document.getElementById('outputText');
   const outputCopyEl = document.getElementById('outputCopy');
@@ -704,6 +859,14 @@
   const manuscriptSelectEl = document.getElementById('manuscriptSelect');
   const manuscriptRefreshEl = document.getElementById('manuscriptRefresh');
   const followEditEl = document.getElementById('followEdit');
+  const previewPaneEl = previewEl.closest('.pane');
+  const previewExpandEl = document.getElementById('previewExpand');
+  const typoPrevEl = document.getElementById('typoPrev');
+  const typoNextEl = document.getElementById('typoNext');
+  const typoNavStatusEl = document.getElementById('typoNavStatus');
+  const columnSourceStatusEl = document.getElementById('columnSourceStatus');
+  // 「前の誤字／次の誤字」で選んでいる箇所の番号（-1 は未選択）
+  let typoNavIndex = -1;
 
   let lastColumns = [];
   // 各段落（入力の各行）が縦書きプレビューの何列目から始まるか。書いている箇所への自動移動で使う
@@ -713,6 +876,9 @@
   let selectedManuscript = '';
   // 改ページ記法の直後に来る列の番号（lastColumns の添字）
   let lastPageBreaks = new Set();
+  // 段落ごとの列分け・HTMLの使い回し（update() 参照）。キーは列分けに関わる設定をつないだ文字列
+  let paragraphCache = new Map();
+  let paragraphCacheKey = '';
 
   // 改ページ記法: その記法だけを書いた行（前後の空白は許容）。青空文庫形式・pixiv形式とも、半角・全角の括弧を許容する
   const PAGE_BREAK_LINE_RE = /^\s*(?:[［\[][＃#]改ページ[］\]]|[［\[]newpage[］\]])\s*$/;
@@ -901,13 +1067,35 @@
     });
   }
 
+  // 半角アルファベットの単語の向き: 大文字だけの短い略語（BBQ・OKなど4字まで）は1文字ずつ正立させ、
+  // それ以外の英単語（Trick など）は縦書きの既定どおり横倒しにして単語として読めるようにする。
+  // 列の境目で単語が分かれても向きが変わらないよう、列に分ける前の段階で単語全体を見て決める
+  const LATIN_WORD_RE = /[A-Za-z]+/g;
+  function latinOrientation(word) {
+    return /^[A-Z]{1,4}$/.test(word) ? 'upright' : 'sideways';
+  }
+
+  // 文字列の各文字位置に、属する英単語の向き（upright / sideways）を割り当てる
+  function latinOrientationMap(text) {
+    const map = new Array(text.length);
+    for (const m of text.matchAll(LATIN_WORD_RE)) {
+      map.fill(latinOrientation(m[0]), m.index, m.index + m[0].length);
+    }
+    return map;
+  }
+
   // 段落を「1マス分の文字（傍点フラグ付き）」または「ルビ1個（本文の文字数分）」の単位に分解する
   function paragraphToUnits(paragraph) {
     const units = [];
     for (const t of tokenize(paragraph)) {
       if (t.type === 'plain' || t.type === 'emphasis') {
+        const latin = latinOrientationMap(t.text);
+        let offset = 0;
         for (const cell of splitCells(t.text)) {
-          units.push({ kind: 'char', text: cell.text, len: cell.len, tcy: cell.tcy, emphasis: t.type === 'emphasis' });
+          const unit = { kind: 'char', text: cell.text, len: cell.len, tcy: cell.tcy, emphasis: t.type === 'emphasis' };
+          if (!cell.tcy && latin[offset]) unit.latin = latin[offset];
+          units.push(unit);
+          offset += cell.text.length;
         }
       } else if (t.type === 'dakuten') {
         for (const cell of splitCells(t.text)) {
@@ -923,15 +1111,20 @@
   // 誤字チェック: 日本語の文章ではまず正しくならない並びだけに絞り、誤検出を少なくする。
   // 段落ごとに、単位の文字（ルビは本文の文字）をつないだ文字列に対して調べるので、列の境目をまたぐ箇所も見つかる
   const JA_CHAR = '[\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}ー々]';
+  // reason は赤い箇所にマウスを載せたときに表示する理由
   const TYPO_RULES = [
-    /[、。，．]{2,}/gu, // 句読点の連続（、、／。。／、。）
-    /(?<![をがに])([をがに])\1(?![をがに])/gu, // 助詞の重複（をを／がが／にに）。3つ以上続くもの（叫び声など）は除く
-    /、(?=[」』）)])/gu, // 閉じかっこ直前の読点
-    /(?<=^[\s　]*)[、。]/gu, // 段落の先頭の句読点
-    new RegExp('(?<=' + JA_CHAR + '|[、。])[ ]+(?=' + JA_CHAR + ')', 'gu'), // 日本語の間の半角スペース
-    /(?<!…)…(?:……)*(?!…)/gu, // 奇数個の三点リーダー（2つ重ねるのが一般的）
-    /(?<!―)―(?:――)*(?!―)/gu, // 奇数個のダッシュ（同上）
+    { re: /[、。，．]{2,}/gu, reason: '句読点が続いています' }, // 句読点の連続（、、／。。／、。）
+    { re: /(?<![をがに])([をがに])\1(?![をがに])/gu, reason: '助詞が重なっています' }, // 助詞の重複（をを／がが／にに）。3つ以上続くもの（叫び声など）は除く
+    { re: /、(?=[」』）)])/gu, reason: '閉じかっこの直前に読点があります' },
+    { re: /(?<=^[\s　]*)[、。]/gu, reason: '段落の先頭に句読点があります' },
+    { re: new RegExp('(?<=' + JA_CHAR + '|[、。])[ ]+(?=' + JA_CHAR + ')', 'gu'), reason: '日本語の間に半角スペースがあります' },
+    { re: /(?<!…)…(?:……)*(?!…)/gu, reason: '「…」が奇数個です（2つ重ねるのが一般的）' },
+    { re: /(?<!―)―(?:――)*(?!―)/gu, reason: '「―」が奇数個です（2つ重ねるのが一般的）' },
   ];
+  const BRACKET_REASON = 'かっこの対応が取れていません';
+  // flagged に入れる理由の番号（0 は印なし）: 1〜 が TYPO_RULES の順、最後がかっこの対応
+  const TYPO_REASONS = TYPO_RULES.map(function (r) { return r.reason; }).concat([BRACKET_REASON]);
+  const BRACKET_REASON_ID = TYPO_REASONS.length;
   const BRACKET_PAIRS = { '「': '」', '『': '』', '（': '）', '(': ')', '【': '】' };
   const CLOSING_BRACKETS = new Set(Object.values(BRACKET_PAIRS));
 
@@ -946,15 +1139,16 @@
         if (stack.length > 0 && BRACKET_PAIRS[text[stack[stack.length - 1]]] === ch) {
           stack.pop();
         } else {
-          flagged[i] = 1;
+          flagged[i] = BRACKET_REASON_ID;
         }
       }
     }
-    for (const i of stack) flagged[i] = 1;
+    for (const i of stack) flagged[i] = BRACKET_REASON_ID;
   }
 
-  // 1段落分の単位のうち、誤字の可能性がある箇所に掛かる単位に typo: true を付け、見つかった箇所の数を返す。
-  // 複数のルールが同じ文字に当たっても二重に数えないよう、印の付いた文字のひと続きを1箇所と数える
+  // 1段落分の単位のうち、誤字の可能性がある箇所に掛かる単位に typo（理由の文字列）を付け、見つかった箇所の数を返す。
+  // 複数のルールが同じ文字に当たっても二重に数えないよう、印の付いた文字のひと続きを1箇所と数える。
+  // 理由は先に当たったルールのものを残す（1つの単位に複数の理由があれば「／」でつなぐ）
   function markTypos(units) {
     let text = '';
     const starts = [];
@@ -965,16 +1159,22 @@
     starts.push(text.length);
     const flagged = new Uint8Array(text.length);
     markUnmatchedBrackets(text, flagged);
-    for (const re of TYPO_RULES) {
-      for (const m of text.matchAll(re)) flagged.fill(1, m.index, m.index + m[0].length);
-    }
+    TYPO_RULES.forEach(function (rule, ruleIndex) {
+      for (const m of text.matchAll(rule.re)) {
+        for (let i = m.index; i < m.index + m[0].length; i++) {
+          if (!flagged[i]) flagged[i] = ruleIndex + 1;
+        }
+      }
+    });
     let count = 0;
     for (let i = 0; i < flagged.length; i++) {
       if (flagged[i] && !flagged[i - 1]) count++;
     }
     if (count === 0) return 0;
     units.forEach(function (u, i) {
-      if (flagged.subarray(starts[i], starts[i + 1]).includes(1)) u.typo = true;
+      const ids = new Set(flagged.subarray(starts[i], starts[i + 1]));
+      ids.delete(0);
+      if (ids.size > 0) u.typo = Array.from(ids).map(function (id) { return TYPO_REASONS[id - 1]; }).join('／');
     });
     return count;
   }
@@ -1071,72 +1271,109 @@
     return div.innerHTML;
   }
 
-  // 半角アルファベットの連続（BBQなど）は1文字ずつ縦にまっすぐ並ぶよう個別にラップし、
-  // detectTcy が true のときは縦中横（「!!」「!?」「?!」、ONなら半角数字1〜2桁）も1マスにまとめる。
+  // タイトル・著者名の描画: 英単語は向き（latinOrientation）に応じて正立／横倒しにし、
+  // 縦中横（「!!」「!?」「?!」、ONなら半角数字1〜2桁）は1マスにまとめる。
   // エスケープ後の文字列に対して正規表現をかけると &amp; などの実体参照の中の文字（amp等）を誤って
   // 拾ってしまうため、エスケープ前の生テキストの段階で検出してから個別にエスケープする。
-  // 本文は列に分けた時点で縦中横の単位が決まっている（renderColumn が描画する）ため detectTcy=false で呼ぶ。
-  // ここで改めて判定すると、列の境目で「123」が「12」「3」に分かれたときに「12」を誤って縦中横にしてしまう。
+  // 本文は列に分けた時点で縦中横・英単語の向きが決まっている（renderColumn が描画する）ためここは通さない。
+  // 改めて判定すると、列の境目で「123」が「12」「3」に分かれたときに「12」を誤って縦中横にしてしまう。
   const INLINE_RE_WITH_DIGITS = new RegExp('[A-Za-z]+|' + TCY_DIGITS_SRC + '|' + TCY_SYMBOL_SRC, 'gu');
   const INLINE_RE_NO_DIGITS = new RegExp('[A-Za-z]+|' + TCY_SYMBOL_SRC, 'gu');
-  const INLINE_RE_LATIN_ONLY = /[A-Za-z]+/gu;
-  function renderInlineText(rawText, detectTcy) {
-    const re = !detectTcy ? INLINE_RE_LATIN_ONLY : (tcyDigitsEnabled ? INLINE_RE_WITH_DIGITS : INLINE_RE_NO_DIGITS);
+  // 結合文字の濁点(U+3099)・半濁点(U+309A)は、縦書きでは多くのフォントで直前の文字に重ならず、下のマスへずれて表示される。
+  // 「文字＋濁点」を span で囲み、濁点そのものは大きさ0で残したうえで（プレビューからコピーしても濁点が消えないように）、
+  // CSS の ::after で単独の濁点「゛」「゜」を文字の右上に重ねて描く
+  const COMBINING_DAKUTEN_RE = /(\P{M})([\u3099\u309A])/gu;
+  function escapeWithDakuten(str) {
+    let html = '';
+    let lastIndex = 0;
+    let m;
+    COMBINING_DAKUTEN_RE.lastIndex = 0;
+    while ((m = COMBINING_DAKUTEN_RE.exec(str)) !== null) {
+      html += escapeHtml(str.slice(lastIndex, m.index));
+      const cls = m[2] === '\u3099' ? 'dakuten' : 'handakuten';
+      html += '<span class="' + cls + '">' + escapeHtml(m[1]) + '<span class="dakuten-mark">' + m[2] + '</span></span>';
+      lastIndex = COMBINING_DAKUTEN_RE.lastIndex;
+    }
+    return html + escapeHtml(str.slice(lastIndex));
+  }
+
+  // タイトル・著者名用（本文は renderColumn が単位ごとに描画する）
+  function renderInlineText(rawText) {
+    const re = tcyDigitsEnabled ? INLINE_RE_WITH_DIGITS : INLINE_RE_NO_DIGITS;
     let html = '';
     let lastIndex = 0;
     let m;
     re.lastIndex = 0;
     while ((m = re.exec(rawText)) !== null) {
       if (m.index > lastIndex) {
-        html += escapeHtml(rawText.slice(lastIndex, m.index));
+        html += escapeWithDakuten(rawText.slice(lastIndex, m.index));
       }
-      const cls = /^[A-Za-z]/.test(m[0]) ? 'latin-upright' : 'tcy';
-      html += '<span class="' + cls + '">' + escapeHtml(m[0]) + '</span>';
+      if (!/^[A-Za-z]/.test(m[0])) {
+        html += '<span class="tcy">' + escapeHtml(m[0]) + '</span>';
+      } else if (latinOrientation(m[0]) === 'upright') {
+        html += '<span class="latin-upright">' + escapeHtml(m[0]) + '</span>';
+      } else {
+        html += escapeHtml(m[0]);
+      }
       lastIndex = re.lastIndex;
     }
     if (lastIndex < rawText.length) {
-      html += escapeHtml(rawText.slice(lastIndex));
+      html += escapeWithDakuten(rawText.slice(lastIndex));
     }
     return html;
   }
 
-  // 1列分の単位を HTML にする。傍点・誤字チェックの印は連続する範囲をまとめて1つのspanで囲み、縦中横の単位は個別のspanにする
+  // 誤字の印の span。理由はマウスを載せると表示する（半角スペースは見落としやすいので枠も付ける）
+  function typoSpan(innerHtml, reason, isSpace) {
+    return '<span class="typo' + (isSpace ? ' typo-space' : '') + '" title="' + escapeHtml('誤字の可能性: ' + reason) + '">' + innerHtml + '</span>';
+  }
+
+  // 1列分の単位を HTML にする。傍点・誤字チェックの印は連続する範囲（理由が同じもの）をまとめて1つのspanで囲み、
+  // 縦中横の単位は個別のspanにする。英単語は向きごとにまとめ、正立のものだけ span で囲む（横倒しは縦書きの既定）
   function renderColumn(units) {
     let html = '';
     let groupHtml = '';
+    let groupRaw = '';
     let buffer = '';
+    let bufferLatin = '';
     let groupEmphasis = false;
-    let groupTypo = false;
+    let groupTypo = '';
     function flushText() {
       if (buffer) {
-        groupHtml += renderInlineText(buffer, false);
+        groupHtml += bufferLatin === 'upright' ? '<span class="latin-upright">' + escapeHtml(buffer) + '</span>'
+          : bufferLatin === 'sideways' ? escapeHtml(buffer) : escapeWithDakuten(buffer);
         buffer = '';
       }
     }
     function flushGroup() {
       flushText();
       if (groupHtml) {
-        if (groupTypo) groupHtml = '<span class="typo">' + groupHtml + '</span>';
+        if (groupTypo) groupHtml = typoSpan(groupHtml, groupTypo, /^\s+$/.test(groupRaw));
         html += groupEmphasis ? '<span class="bouten">' + groupHtml + '</span>' : groupHtml;
         groupHtml = '';
+        groupRaw = '';
       }
     }
     for (const u of units) {
       if (u.kind === 'char') {
-        const typo = Boolean(u.typo);
+        const typo = u.typo || '';
         if ((buffer || groupHtml) && (u.emphasis !== groupEmphasis || typo !== groupTypo)) flushGroup();
         groupEmphasis = u.emphasis;
         groupTypo = typo;
+        groupRaw += u.text;
         if (u.tcy) {
           flushText();
           groupHtml += '<span class="tcy">' + escapeHtml(u.text) + '</span>';
         } else {
+          const latin = u.latin || '';
+          if (buffer && latin !== bufferLatin) flushText();
+          bufferLatin = latin;
           buffer += u.text;
         }
       } else {
         flushGroup();
         const rubyHtml = '<ruby>' + escapeHtml(u.base) + '<rt>' + escapeHtml(u.reading) + '</rt></ruby>';
-        html += u.typo ? '<span class="typo">' + rubyHtml + '</span>' : rubyHtml;
+        html += u.typo ? typoSpan(rubyHtml, u.typo, false) : rubyHtml;
       }
     }
     flushGroup();
@@ -1216,26 +1453,71 @@
     URL.revokeObjectURL(url);
   }
 
+  // 「HTMLとして保存」で書き出す縦書きプレビューのHTML。
+  // 画面用の「欄の高さに合わせる」で小さくした文字の大きさは使わず、通常の大きさで書き出す。
+  // ページ枠・2段組みの枠の幅・高さは文字の大きさで測って決めているので、通常の大きさでページを組み直してから取り出し、
+  // 取り出したあとで画面の表示（文字の大きさ・スクロール位置）を元に戻す。
+  // 誤字チェックの印・行番号など画面での確認用の情報は書き出さない
+  function capturePreviewHtmlForExport() {
+    const pagedLayout = twoColumnModeEl.checked || oneColumnFramesActive();
+    const fitted = previewEl.style.getPropertyValue('--v-font-size') !== '';
+    let html;
+    if (pagedLayout && fitted) {
+      const scrollState = captureScrollState();
+      previewEl.style.removeProperty('--v-font-size');
+      if (twoColumnModeEl.checked) {
+        applyTwoColumnLayout();
+      } else {
+        applyOneColumnFrames();
+      }
+      html = previewEl.innerHTML;
+      update();
+      restoreScrollState(scrollState);
+    } else {
+      html = previewEl.innerHTML;
+    }
+    const tpl = document.createElement('template');
+    tpl.innerHTML = html;
+    tpl.content.querySelectorAll('.typo').forEach(function (el) {
+      el.replaceWith.apply(el, Array.from(el.childNodes));
+    });
+    tpl.content.querySelectorAll('[data-para]').forEach(function (el) { el.removeAttribute('data-para'); });
+    return tpl.innerHTML;
+  }
+
   function buildStandaloneHtml() {
     const css = [
       'body{margin:0;padding:2rem;background:#fafaf7;color:#222;font-family:"Hiragino Kaku Gothic ProN","Yu Gothic","Meiryo",sans-serif;}',
       '@media (prefers-color-scheme: dark){body{background:#1e1e1e;color:#eee;}}',
-      '.vertical-preview{display:flex;flex-direction:row-reverse;align-items:flex-start;gap:0.3em;flex-wrap:wrap;}',
+      '.vertical-preview{display:flex;flex-direction:row-reverse;align-items:flex-start;gap:0.3em;flex-wrap:wrap;counter-reset:preview-page;}',
       '.v-line{writing-mode:vertical-rl;white-space:pre;font-size:1.3rem;line-height:1.9;font-family:"游明朝","Yu Mincho","Hiragino Mincho ProN","MS PMincho",serif;flex:none;}',
       '.v-line:empty{min-width:1em;}',
-      '.vertical-preview>.v-line[data-page-break]{margin-right:0.8em;padding-right:0.8em;border-right:2px dashed #8a4b3b;}',
-      '.v-title{font-size:2rem;font-weight:700;letter-spacing:0.2em;margin-right:0.3em;}',
-      '.v-author{font-size:1rem;margin-right:0.6em;}',
+      '.vertical-preview>.v-line[data-page-break]{position:relative;align-self:stretch;margin-right:0.8em;padding-right:0.8em;border-right:2px dashed #8a4b3b;}',
+      '.vertical-preview>.v-line[data-page-break]::after{content:"改ページ";position:absolute;top:0;right:0.1em;font-size:0.5em;line-height:1;color:#8a4b3b;font-family:"Hiragino Kaku Gothic ProN","Yu Gothic","Meiryo",sans-serif;}',
+      '.v-title{font-size:calc(2rem * var(--v-title-scale, 1));font-weight:700;letter-spacing:0.2em;margin-right:0.3em;}',
+      '.v-author{font-size:calc(1rem * var(--v-author-scale, 1));margin-right:0.6em;}',
       '.page-row{display:flex;flex-direction:row-reverse;align-items:flex-start;gap:0.3em;}',
-      '.preview-page{display:flex;flex-direction:column;gap:0.6em;flex:none;border:1px solid #ddd;border-radius:4px;padding:0.6em;}',
+      '.preview-page{display:flex;flex-direction:column;gap:0.6em;flex:none;border:1px solid #ddd;border-radius:4px;padding:0.6em;counter-increment:preview-page;}',
+      '.preview-page::after{content:counter(preview-page);margin-top:auto;align-self:center;font-size:0.7rem;line-height:1;opacity:0.6;}',
       '.preview-page .page-row:not(:last-child){padding-bottom:0.5em;border-bottom:1px dashed #8a4b3b;}',
       '.v-line ruby{ruby-position:over;}',
       '.v-line rt{font-size:0.5em;color:#8a4b3b;}',
       '.v-line .bouten{text-emphasis-style:filled dot;text-emphasis-color:#8a4b3b;text-emphasis-position:over right;-webkit-text-emphasis-style:filled dot;-webkit-text-emphasis-color:#8a4b3b;}',
       '.tcy{text-combine-upright:all;-webkit-text-combine:horizontal;}',
-      '.latin-upright{text-orientation:upright;}'
+      '.latin-upright{text-orientation:upright;}',
+      '.v-line .dakuten,.v-line .handakuten{position:relative;}',
+      '.v-line .dakuten-mark{font-size:0;}',
+      '.v-line .dakuten::after,.v-line .handakuten::after{position:absolute;top:0;left:0;text-emphasis:none;-webkit-text-emphasis:none;}',
+      '.v-line .dakuten::after{content:"\\309B";transform:translateY(-0.25em);}',
+      '.v-line .handakuten::after{content:"\\309C";transform:translate(-0.3em,-0.95em);}'
     ].join('\n');
-    return '<!DOCTYPE html>\n<html lang="ja">\n<head>\n<meta charset="UTF-8">\n<title>縦書きプレビュー</title>\n<style>\n' + css + '\n</style>\n</head>\n<body>\n<div class="vertical-preview">\n' + previewEl.innerHTML + '\n</div>\n</body>\n</html>\n';
+    // タイトル・著者名を小さくする倍率は文字の大きさに対する比なので、そのまま書き出す
+    const scales = ['--v-title-scale', '--v-author-scale'].map(function (name) {
+      const v = previewEl.style.getPropertyValue(name);
+      return v ? name + ':' + v + ';' : '';
+    }).join('');
+    const styleAttr = scales ? ' style="' + scales + '"' : '';
+    return '<!DOCTYPE html>\n<html lang="ja">\n<head>\n<meta charset="UTF-8">\n<title>縦書きプレビュー</title>\n<style>\n' + css + '\n</style>\n</head>\n<body>\n<div class="vertical-preview"' + styleAttr + '>\n' + capturePreviewHtmlForExport() + '\n</div>\n</body>\n</html>\n';
   }
 
   // A4・余白1.5cmを想定した印刷可能幅(px)。画面の2段組み表示もこの幅を基準に合わせている。
@@ -1291,8 +1573,8 @@
     style.id = BOOK_SIZE_STYLE_ID;
     style.textContent = metrics.pageCss +
       '.v-line{font-size:' + metrics.fontPx + 'px;}' +
-      '.v-line.v-title{font-size:' + (metrics.fontPx * TITLE_SCALE).toFixed(1) + 'px;}' +
-      '.v-line.v-author{font-size:' + (metrics.fontPx * AUTHOR_SCALE).toFixed(1) + 'px;}';
+      '.v-line.v-title{font-size:calc(' + (metrics.fontPx * TITLE_SCALE).toFixed(1) + 'px * var(--v-title-scale, 1));}' +
+      '.v-line.v-author{font-size:calc(' + (metrics.fontPx * AUTHOR_SCALE).toFixed(1) + 'px * var(--v-author-scale, 1));}';
     document.head.appendChild(style);
     return metrics;
   }
@@ -1434,6 +1716,18 @@
     return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 800px)').matches;
   }
 
+  // 通常の文字の大きさのとき、1列（「1行の文字数」＋ぶら下げ分の1字）がプレビュー欄の高さに収まらないか。
+  // 欄の高さが測れないとき（表示前など）は「収まる」とみなす
+  function columnOverflowsPreview() {
+    let n = parseInt(lineLengthEl.value, 10);
+    if (!Number.isFinite(n) || n < 1) n = 1;
+    const cs = getComputedStyle(previewEl);
+    const available = previewEl.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+    if (!(available > 0)) return false;
+    const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    return (n + 1) * rootPx * 1.3 > available;
+  }
+
   // 「プレビューの文字の大きさを欄の高さに合わせる」: 1列に必要な高さ（文字の大きさ×units）が
   // 使える高さ availablePx に収まる文字の大きさ(px)を返す。通常の大きさ maxPx より大きくはしない。
   const FIT_MIN_FONT_PX = 8;
@@ -1442,11 +1736,22 @@
     const px = Math.floor((availablePx / units) * 10) / 10;
     return Math.max(FIT_MIN_FONT_PX, Math.min(maxPx, px));
   }
-  // ページ枠（.preview-page）の内側の余白・枠線・段の区切りの分として、文字に使えない高さ(px)
-  const FIT_FRAME_EXTRA_PX = { 1: 26, 2: 52 };
+  // ページ枠（.preview-page）の内側の余白・枠線・段の区切り・ページ番号の分として、文字に使えない高さ(px)
+  const FIT_FRAME_EXTRA_PX = { 1: 48, 2: 74 };
 
-  // プレビューの文字の大きさを決めて #verticalPreview に --v-font-size として設定する（OFFなら外して通常の大きさに戻す）
-  function applyFitFontSize(n, titleVal, authorVal) {
+  // タイトル・著者名が1列（「1行の文字数」＋ぶら下げ分の1字）に収まるように、文字を小さくする倍率を返す（収まるなら1）。
+  // タイトルは字間（0.2em）が広い分を見込む。小さくしすぎて読めなくならないよう、本文の6割を下限にする
+  const TITLE_LETTER_SPACING = 1.2;
+  function computeHeadingScale(text, baseScale, spacing, n) {
+    const len = Array.from(text).length;
+    if (len === 0) return 1;
+    const scale = (n + 1) / (len * baseScale * spacing);
+    return Math.max(0.6 / baseScale, Math.min(1, Math.floor(scale * 100) / 100));
+  }
+
+  // プレビューの文字の大きさを決めて #verticalPreview に --v-font-size として設定する（OFFなら外して通常の大きさに戻す）。
+  // タイトル・著者名は別に縮小する（computeHeadingScale）ので、ここでは本文の1列だけを収める
+  function applyFitFontSize(n) {
     previewEl.style.removeProperty('--v-font-size');
     if (!fitPreviewEl.checked) return;
     const cs = getComputedStyle(previewEl);
@@ -1459,13 +1764,8 @@
       rows = twoColumnModeEl.checked ? 2 : 1;
       availablePx = (availablePx - FIT_FRAME_EXTRA_PX[rows]) / rows;
     }
-    // 1列は「1行の文字数」＋ぶら下げ分の1字。タイトル・著者名は文字が大きい（タイトルは字間も広い）分を見込む
-    const units = Math.max(
-      n + 1,
-      Array.from(titleVal).length * (TITLE_SCALE * 1.2),
-      Array.from(authorVal).length * AUTHOR_SCALE
-    );
-    const px = computeFitFontPx(availablePx, units, maxPx);
+    // 1列は「1行の文字数」＋ぶら下げ分の1字
+    const px = computeFitFontPx(availablePx, n + 1, maxPx);
     if (px !== null && px < maxPx) previewEl.style.setProperty('--v-font-size', px + 'px');
   }
 
@@ -1602,8 +1902,24 @@
     outputEl.value = finalConverted;
     updateClipStudioOutput(raw, finalConverted);
 
+    // 「原稿の1行目をタイトルにする」: 1行目をタイトル欄に表示し、1行目とその直後の空行は本文の列にしない。
+    // 段落の番号（data-para・書いている箇所への自動移動）は原稿の行番号のまま数える
+    let bodyStart = 0;
+    if (firstLineTitleEl.checked) {
+      const rawLines = raw.split('\n');
+      const firstLine = rawLines[0].trim();
+      if (titleTextEl.value !== firstLine) titleTextEl.value = firstLine;
+      bodyStart = 1;
+      while (bodyStart < rawLines.length && rawLines[bodyStart].trim() === '') bodyStart++;
+    } else {
+      manualTitle = titleTextEl.value;
+    }
+
     const paragraphs = converted.split('\n');
     const columns = [];
+    const columnHtml = [];
+    // 各列が原稿の何段落目（0始まり）から来たか。列をクリックしたときに原稿の行番号を出すのに使う
+    const columnParas = [];
     const startColumns = [];
     // 改ページ記法の行は列にせず、次の列の番号を控える。先頭・末尾の記法や連続した記法は1つにまとめる（空白ページは作らない）
     const pageBreaks = new Set();
@@ -1611,36 +1927,66 @@
     let totalChars = 0;
     const typoCheck = typoCheckEl.checked;
     let typoCount = 0;
-    for (const para of paragraphs) {
+    // 段落ごとの列分け・HTMLは、段落の文字列と列分けに関わる設定が同じなら前回の結果を使い回す（長い原稿の再描画を軽くする）
+    const cacheKey = [n, kinsokuEl.checked, tcyDigitsEnabled, typoCheck].join('|');
+    if (cacheKey !== paragraphCacheKey) {
+      paragraphCache = new Map();
+      paragraphCacheKey = cacheKey;
+    }
+    const nextCache = new Map();
+    paragraphs.forEach(function (para, paraIndex) {
       startColumns.push(columns.length);
+      if (paraIndex < bodyStart) return;
       if (pageBreakEnabled && PAGE_BREAK_LINE_RE.test(para)) {
         if (columns.length > 0) breakPending = true;
-        continue;
+        return;
       }
       if (breakPending) {
         pageBreaks.add(columns.length);
         breakPending = false;
       }
-      const units = paragraphToUnits(para);
-      if (typoCheck) typoCount += markTypos(units);
-      totalChars +=units.reduce((sum, u) => sum + u.len, 0);
-      columns.push(...chunkUnits(units, n, kinsokuEl.checked));
-    }
+      let result = nextCache.get(para) || paragraphCache.get(para);
+      if (!result) {
+        const units = paragraphToUnits(para);
+        const typos = typoCheck ? markTypos(units) : 0;
+        const cols = chunkUnits(units, n, kinsokuEl.checked);
+        result = {
+          columns: cols,
+          html: cols.map(renderColumn),
+          typos: typos,
+          chars: units.reduce(function (sum, u) { return sum + u.len; }, 0),
+        };
+      }
+      nextCache.set(para, result);
+      typoCount += result.typos;
+      totalChars += result.chars;
+      for (let i = 0; i < result.columns.length; i++) {
+        columns.push(result.columns[i]);
+        columnHtml.push(result.html[i]);
+        columnParas.push(paraIndex);
+      }
+    });
+    // 今回の原稿に残っている段落だけを持ち越す（消した段落の分がたまり続けないように）
+    paragraphCache = nextCache;
 
     // タイトル・著者名は任意入力。指定があれば本文の先頭（＝一番右）に大きめの文字で表示する。
+    // 1列に収まらない長さのときは、タイトル・著者名だけを小さくする（本文の大きさは変えない）
     let titleHtml = '';
     const titleVal = applyBasicConversions(titleTextEl.value.trim());
     const authorVal = applyBasicConversions(authorTextEl.value.trim());
     if (titleVal) {
-      titleHtml += '<div class="v-line v-title">' + renderInlineText(titleVal, true) + '</div>';
+      titleHtml += '<div class="v-line v-title">' + renderInlineText(titleVal) + '</div>';
     }
     if (authorVal) {
-      titleHtml += '<div class="v-line v-author">' + renderInlineText(authorVal, true) + '</div>';
+      titleHtml += '<div class="v-line v-author">' + renderInlineText(authorVal) + '</div>';
     }
+    setScaleProperty('--v-title-scale', computeHeadingScale(titleVal, TITLE_SCALE, TITLE_LETTER_SPACING, n));
+    setScaleProperty('--v-author-scale', computeHeadingScale(authorVal, AUTHOR_SCALE, 1, n));
 
-    applyFitFontSize(n, titleVal, authorVal);
-    previewEl.innerHTML = titleHtml + columns
-      .map((col, i) => '<div class="v-line"' + (pageBreaks.has(i) ? ' data-page-break="1"' : '') + '>' + renderColumn(col) + '</div>')
+    previewEl.classList.toggle('is-two-column', twoColumnModeEl.checked);
+    applyFitFontSize(n);
+    previewEl.innerHTML = titleHtml + columnHtml
+      .map((html, i) => '<div class="v-line" data-para="' + columnParas[i] + '"' + (pageBreaks.has(i) ? ' data-page-break="1"' : '') + '>' + html + '</div>')
       .join('');
     if (twoColumnModeEl.checked) {
       applyTwoColumnLayout();
@@ -1667,7 +2013,17 @@
     lastColumns = columns;
     paragraphStartColumns = startColumns;
     lastPageBreaks = pageBreaks;
+    refreshTypoNav();
     persistSettings();
+  }
+
+  // 1 のときは指定を外し、HTMLを小さく保つ
+  function setScaleProperty(name, scale) {
+    if (scale < 1) {
+      previewEl.style.setProperty(name, String(scale));
+    } else {
+      previewEl.style.removeProperty(name);
+    }
   }
 
   // 入力内容・各設定をブラウザのlocalStorageに保存し、再読み込み後も復元する。
@@ -1692,7 +2048,8 @@
 
   function persistSettings() {
     saveToStorage('inputText', inputEl.value);
-    saveToStorage('titleText', titleTextEl.value);
+    saveToStorage('titleText', firstLineTitleEl.checked ? manualTitle : titleTextEl.value);
+    saveToStorage('firstLineTitle', firstLineTitleEl.checked ? '1' : '0');
     saveToStorage('authorText', authorTextEl.value);
     saveToStorage('lineLength', lineLengthEl.value);
     saveToStorage('pageSizePreset', pageSizePresetEl.value);
@@ -1726,6 +2083,10 @@
 
     const savedTitle = loadFromStorage('titleText');
     titleTextEl.value = savedTitle !== null ? savedTitle : SAMPLE_TITLE;
+    manualTitle = titleTextEl.value;
+    const savedFirstLineTitle = loadFromStorage('firstLineTitle');
+    if (savedFirstLineTitle !== null) firstLineTitleEl.checked = savedFirstLineTitle === '1';
+    titleTextEl.disabled = firstLineTitleEl.checked;
 
     const savedAuthor = loadFromStorage('authorText');
     authorTextEl.value = savedAuthor !== null ? savedAuthor : SAMPLE_AUTHOR;
@@ -1781,9 +2142,10 @@
     const savedLinesPerPage = loadFromStorage('linesPerPage');
     if (savedLinesPerPage !== null) linesPerPageEl.value = savedLinesPerPage;
 
-    // 「欄の高さに合わせる」は保存された値がなければ、スマホなど幅の狭い画面でだけ ON にする
+    // 「欄の高さに合わせる」は保存された値がなければ、スマホなど幅の狭い画面か、
+    // 「1行の文字数」が多くて通常の大きさでは1列が欄に収まらないときだけ ON にする
     const savedFit = loadFromStorage('fitPreview');
-    fitPreviewEl.checked = savedFit !== null ? savedFit === '1' : isNarrowScreen();
+    fitPreviewEl.checked = savedFit !== null ? savedFit === '1' : (isNarrowScreen() || columnOverflowsPreview());
 
     const savedPageFrames = loadFromStorage('pageFrames');
     if (savedPageFrames !== null) pageFramesEl.checked = savedPageFrames === '1';
@@ -1840,7 +2202,12 @@
   hintsEl.addEventListener('toggle', function () {
     saveToStorage('hintsOpen', hintsEl.open ? '1' : '0');
   });
-  [inputEl, titleTextEl, authorTextEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl, autoIndentEl, convertDakutenEl, tcyDigitsEl, pageBreakEl, typoCheckEl, kinsokuEl, twoColumnModeEl, columnsPerRowEl, linesPerPageEl, pageFramesEl, fitPreviewEl].forEach(function (el) {
+  // オンの間はタイトル欄に1行目を表示して入力できなくし、オフに戻したら手で入力していたタイトルを戻す
+  firstLineTitleEl.addEventListener('input', function () {
+    titleTextEl.disabled = firstLineTitleEl.checked;
+    if (!firstLineTitleEl.checked) titleTextEl.value = manualTitle;
+  });
+  [inputEl, titleTextEl, firstLineTitleEl, authorTextEl, lineLengthEl, convertEl, convertNumEl, convertHyphenEl, autoIndentEl, convertDakutenEl, tcyDigitsEl, pageBreakEl, typoCheckEl, kinsokuEl, twoColumnModeEl, columnsPerRowEl, linesPerPageEl, pageFramesEl, fitPreviewEl].forEach(function (el) {
     el.addEventListener('input', scheduleUpdate);
   });
   clipStudioModeRadios.forEach(function (el) {
@@ -1965,15 +2332,190 @@
     window.print();
   });
 
+  // ---- 縦書きプレビューの操作 ----
+
+  // 誤字の箇所への移動: プレビュー内の誤字の印（.typo）を読む順（右の列から）にたどる。
+  // 理由ごとに分かれて隣り合っている印（「をを、、」など）は1か所にまとめる（下の「誤字の可能性: ○箇所」と同じ数え方）。
+  // 1つの箇所が列の境目で2つに分かれた場合は、それぞれを1か所として順に止まる
+  function typoGroups() {
+    const groups = [];
+    let prev = null;
+    previewEl.querySelectorAll('.v-line .typo').forEach(function (el) {
+      if (prev && prev.nextSibling === el) {
+        groups[groups.length - 1].push(el);
+      } else {
+        groups.push([el]);
+      }
+      prev = el;
+    });
+    return groups;
+  }
+
+  function typoGroupReason(group) {
+    const reasons = [];
+    group.forEach(function (el) {
+      el.title.replace(/^誤字の可能性: /, '').split('／').forEach(function (r) {
+        if (reasons.indexOf(r) === -1) reasons.push(r);
+      });
+    });
+    return reasons.join('／');
+  }
+
+  // 再描画のあとに、ボタンの有効・無効と「何か所目か」の表示を合わせ直す（選んでいた箇所は番号で引き継ぐ）
+  function refreshTypoNav() {
+    const groups = typoGroups();
+    if (typoNavIndex >= groups.length) typoNavIndex = groups.length - 1;
+    groups.forEach(function (group, i) {
+      group.forEach(function (el) { el.classList.toggle('typo-current', i === typoNavIndex); });
+    });
+    typoPrevEl.disabled = groups.length === 0;
+    typoNextEl.disabled = groups.length === 0;
+    if (groups.length === 0) {
+      typoNavStatusEl.textContent = '';
+    } else if (typoNavIndex < 0) {
+      typoNavStatusEl.textContent = '誤字の印 ' + groups.length + '箇所';
+    } else {
+      typoNavStatusEl.textContent = (typoNavIndex + 1) + ' / ' + groups.length + '箇所: ' + typoGroupReason(groups[typoNavIndex]);
+    }
+  }
+
+  function moveTypo(step) {
+    const groups = typoGroups();
+    if (groups.length === 0) return;
+    typoNavIndex = typoNavIndex < 0 ? (step > 0 ? 0 : groups.length - 1) : (typoNavIndex + step + groups.length) % groups.length;
+    refreshTypoNav();
+    scrollPreviewToElement(groups[typoNavIndex][0]);
+  }
+
+  typoNextEl.addEventListener('click', function () { moveTypo(1); });
+  typoPrevEl.addEventListener('click', function () { moveTypo(-1); });
+
+  // 列をクリックすると、その列が原稿の何行目から来たかを表示する。
+  // 原稿ファイルと同期していないときは、入力欄のその行を選択して見える位置までスクロールする。
+  // 文字を選んでコピーしようとしているとき（選択範囲があるとき）は何もしない
+  function sourceLineOfColumn(lineEl) {
+    if (!lineEl || !lineEl.hasAttribute('data-para')) return null;
+    return parseInt(lineEl.getAttribute('data-para'), 10) + 1;
+  }
+
+  // 入力欄（折り返しあり）の中で、lineStart 文字目が上から何pxの位置にあるかを、同じ幅の見えない入力欄で測る
+  function textareaOffsetOf(lineStart) {
+    const mirror = document.createElement('textarea');
+    mirror.style.cssText = 'position:absolute;visibility:hidden;height:0;min-height:0;left:-9999px;top:0;width:' + inputEl.offsetWidth + 'px;';
+    mirror.value = inputEl.value.slice(0, lineStart);
+    document.body.appendChild(mirror);
+    const offset = mirror.scrollHeight;
+    document.body.removeChild(mirror);
+    return offset;
+  }
+
+  // 入力欄にフォーカスは移さない（移すと、続けて押したキーで選択中の行が上書きされたり、
+  // プレビューのキー操作が効かなくなったり、スマホでキーボードが出たりするため）。
+  // 選択範囲はフォーカスがなくても保たれ、次に入力欄をクリックしたときに見える
+  function selectInputLine(lineNo) {
+    const lines = inputEl.value.split('\n');
+    if (lineNo < 1 || lineNo > lines.length) return;
+    let start = 0;
+    for (let i = 0; i < lineNo - 1; i++) start += lines[i].length + 1;
+    const end = start + lines[lineNo - 1].length;
+    inputEl.setSelectionRange(start, end);
+    const lineHeight = parseFloat(getComputedStyle(inputEl).lineHeight) || 24;
+    inputEl.scrollTop = Math.max(0, textareaOffsetOf(start) - lineHeight * 3);
+  }
+
+  previewEl.addEventListener('click', function (e) {
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) return;
+    const lineNo = sourceLineOfColumn(e.target.closest('.v-line'));
+    if (lineNo === null) return;
+    const syncing = fileSyncEnabledEl.checked && inputEl.readOnly && selectedManuscript;
+    const expanded = previewPaneEl.classList.contains('preview-expanded');
+    if (syncing) {
+      columnSourceStatusEl.textContent = 'クリックした列: ' + selectedManuscript + ' の ' + lineNo + '行目';
+    } else if (expanded) {
+      columnSourceStatusEl.textContent = 'クリックした列: 入力の ' + lineNo + '行目';
+    } else {
+      selectInputLine(lineNo);
+      columnSourceStatusEl.textContent = 'クリックした列: 入力の ' + lineNo + '行目（入力欄をその行までスクロールしました）';
+    }
+    // クリックのあとも PageDown・スペースなどで読み進められるよう、プレビューを選んだ状態にしておく
+    previewEl.focus({ preventScroll: true });
+  });
+
+  // マウスホイール: 縦書きは左へ読み進めるので、縦にスクロールできないとき（列が欄に収まっているとき、
+  // または列の端まで来たとき）は、ホイールの回転を左右のスクロールに置き換える（奥へ回すと次＝左へ進む）。
+  // 左右の端まで来て動かなかったときは、ページ全体のスクロールに任せる
+  previewEl.addEventListener('wheel', function (e) {
+    if (e.ctrlKey || e.shiftKey || e.deltaY === 0 || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+    const unit = e.deltaMode === 1 ? 32 : (e.deltaMode === 2 ? previewEl.clientHeight : 1);
+    const dy = e.deltaY * unit;
+    const canScrollVertically = dy > 0
+      ? previewEl.scrollTop + previewEl.clientHeight < previewEl.scrollHeight - 1
+      : previewEl.scrollTop > 0;
+    if (canScrollVertically) return;
+    const before = previewEl.scrollLeft;
+    previewEl.scrollLeft = before - dy;
+    if (previewEl.scrollLeft !== before) e.preventDefault();
+  }, { passive: false });
+
+  // キー操作（プレビューをクリックまたは Tab で選んだとき）: PageDown・スペースで1画面（ページ枠のときは1ページ）先へ、
+  // PageUp・Shift+スペースで戻る。Home で先頭、End で末尾へ。←→↑↓はブラウザ標準のスクロール
+  function pageStepPx() {
+    const page = previewEl.querySelector('.preview-page');
+    if (page) {
+      const gap = parseFloat(getComputedStyle(previewEl).columnGap) || 0;
+      const w = page.getBoundingClientRect().width + gap;
+      if (w > 0 && w < previewEl.clientWidth) return w;
+    }
+    return previewEl.clientWidth * 0.9;
+  }
+
+  previewEl.addEventListener('keydown', function (e) {
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    let forward = null;
+    if (e.key === 'PageDown' || (e.key === ' ' && !e.shiftKey)) forward = true;
+    if (e.key === 'PageUp' || (e.key === ' ' && e.shiftKey)) forward = false;
+    if (forward !== null) {
+      e.preventDefault();
+      previewEl.scrollLeft += forward ? -pageStepPx() : pageStepPx();
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      previewEl.scrollLeft = 0;
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      previewEl.scrollLeft = -previewEl.scrollWidth;
+    }
+  });
+
+  // 拡大表示: プレビュー欄だけを画面いっぱいに広げる。Esc かボタンで元に戻す。
+  // 欄の高さが変わると ResizeObserver が「欄の高さに合わせる」の文字の大きさを計算し直す
+  function setPreviewExpanded(expanded) {
+    previewPaneEl.classList.toggle('preview-expanded', expanded);
+    document.body.classList.toggle('preview-expanded-open', expanded);
+    previewExpandEl.textContent = expanded ? '拡大を終了（Esc）' : '拡大表示';
+    previewExpandEl.setAttribute('aria-pressed', expanded ? 'true' : 'false');
+    if (expanded) previewEl.focus({ preventScroll: true });
+  }
+
+  previewExpandEl.addEventListener('click', function () {
+    setPreviewExpanded(!previewPaneEl.classList.contains('preview-expanded'));
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && previewPaneEl.classList.contains('preview-expanded')) setPreviewExpanded(false);
+  });
+
   // 原稿ファイル同期: ローカルサーバー経由で開いているときだけ、選択中の原稿ファイルを定期的に読み込んで入力欄へ流し込む。
   // サーバーは保存済みの内容しか返さないため、エディタ側で保存されて初めて反映される。
   // 入力欄の現在値ではなく前回読み込んだ内容と比較し、ファイルが実際に変わったときだけ再描画する
   // （毎回再描画するとプレビューのスクロール位置などが落ち着かないため）。
   const SYNC_INTERVAL_MS = 1000;
   const MANUSCRIPT_LIST_INTERVAL_MS = 5000;
-  // 選択肢: ルートの原稿.txt（存在する場合）＋「原稿」フォルダ内の .txt ファイル
+  // 選択肢: ルートの原稿.txt（存在する場合）＋「原稿」フォルダ配下（サブフォルダを含む）の .txt ファイル
   const ROOT_MANUSCRIPT = '原稿.txt';
   const MANUSCRIPT_DIR = '原稿/';
+  // サブフォルダをたどる深さの上限（シンボリックリンクの循環などで無限にたどらないため）
+  const MANUSCRIPT_MAX_DEPTH = 5;
   let syncTimer = null;
   let manuscriptListTimer = null;
   let syncInFlight = false;
@@ -2074,9 +2616,12 @@
     const bodyLines = previewEl.querySelectorAll('.v-line:not(.v-title):not(.v-author)');
     const target = bodyLines[colIndex];
     if (!target) return;
+    scrollPreviewToElement(target);
+  }
 
-    // すでに見えている場合は動かさない。見えていない場合だけ、その列がプレビュー中央に来るようにする
-    // （scrollIntoView はページ全体までスクロールしてしまうため、プレビュー枠内のスクロール量を直接調整する）
+  // すでに見えている場合は動かさない。見えていない場合だけ、その要素がプレビュー中央に来るようにする
+  // （scrollIntoView はページ全体までスクロールしてしまうため、プレビュー枠内のスクロール量を直接調整する）
+  function scrollPreviewToElement(target) {
     const view = previewEl.getBoundingClientRect();
     const rect = target.getBoundingClientRect();
     const visible = rect.left >= view.left && rect.right <= view.right &&
@@ -2145,21 +2690,42 @@
 
   // 「原稿」フォルダの一覧は、サーバーが返すディレクトリ一覧ページ（Live Preview・python http.server 等）の
   // リンク文字列から .txt のファイル名を拾って作る。一覧ページを返さないサーバーでは空になる。
-  // リンク先（href）はサーバーによって書式が違うため使わず、ファイル名から自分でURLを組み立てる
-  function fetchManuscriptDirList() {
-    return fetch(manuscriptUrl(MANUSCRIPT_DIR), { cache: 'no-store' })
+  // リンク先（href）はサーバーによって書式が違うため使わず、ファイル名から自分でURLを組み立てる。
+  // どちらのサーバーもフォルダは「名前/」と末尾に / を付けて表示するので、それをサブフォルダとみなして中もたどる
+  // （Live Preview の親フォルダへのリンク「../」や、. で始まる隠しフォルダは除く）。
+  // 並び順は、各フォルダ内でファイル→サブフォルダの順、それぞれ名前順（「第2章」が「第10章」より前になる数字順）
+  function compareNames(a, b) {
+    return a.localeCompare(b, 'ja', { numeric: true });
+  }
+
+  function fetchManuscriptDirList(dir, depth) {
+    dir = dir || MANUSCRIPT_DIR;
+    depth = depth || 0;
+    return fetch(manuscriptUrl(dir), { cache: 'no-store' })
       .then(function (res) {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.text();
       })
       .then(function (html) {
         const doc = new DOMParser().parseFromString(html, 'text/html');
-        const names = Array.from(doc.querySelectorAll('a'))
-          .map(function (a) { return a.textContent.trim(); })
-          .filter(function (name) { return /\.txt$/i.test(name) && name.indexOf('/') === -1; });
-        return Array.from(new Set(names))
-          .sort(function (a, b) { return a.localeCompare(b, 'ja', { numeric: true }); })
-          .map(function (name) { return MANUSCRIPT_DIR + name; });
+        const files = new Set();
+        const subdirs = new Set();
+        Array.from(doc.querySelectorAll('a')).forEach(function (a) {
+          const name = a.textContent.trim();
+          if (/^[^/]+\/$/.test(name)) {
+            const dirName = name.slice(0, -1);
+            if (dirName.charAt(0) !== '.') subdirs.add(dirName);
+          } else if (/\.txt$/i.test(name) && name.indexOf('/') === -1) {
+            files.add(name);
+          }
+        });
+        const filePaths = Array.from(files).sort(compareNames).map(function (name) { return dir + name; });
+        if (depth >= MANUSCRIPT_MAX_DEPTH) return filePaths;
+        return Promise.all(Array.from(subdirs).sort(compareNames).map(function (name) {
+          return fetchManuscriptDirList(dir + name + '/', depth + 1);
+        })).then(function (lists) {
+          return filePaths.concat.apply(filePaths, lists);
+        });
       })
       .catch(function () { return []; });
   }
@@ -2259,6 +2825,7 @@
     computeBookPrintMetrics: computeBookPrintMetrics,
     computeFitFontPx: computeFitFontPx,
     BOOK_SIZES: BOOK_SIZES,
+    fetchManuscriptDirList: fetchManuscriptDirList,
   };
 })();
 </script>

@@ -11,6 +11,8 @@ const HTML = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 
 // テストで指定できる設定と、対応する画面要素のID
 const SETTING_IDS = {
+  // タイトル欄より先に切り替える（オフに戻したときに手入力のタイトルを戻す処理の後で、タイトルを上書きできるように）
+  firstLineTitle: 'firstLineTitle',
   title: 'titleText',
   author: 'authorText',
   pageSizePreset: 'pageSizePreset',
@@ -59,7 +61,7 @@ function createTool() {
       } else {
         el.value = String(value);
       }
-      if (el.disabled !== undefined && key === 'twoColumnMode') {
+      if (key === 'twoColumnMode' || key === 'firstLineTitle') {
         // 画面の操作と同じく、2段組みの切り替えで関連入力の有効・無効も切り替える
         el.dispatchEvent(new window.Event('input'));
       }

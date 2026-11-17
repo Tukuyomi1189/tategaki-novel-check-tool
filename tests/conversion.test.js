@@ -83,6 +83,15 @@ test('単独の濁点・半濁点を直前の文字に結合する', () => {
   assert.equal(t.render('あ゛', { convertDakuten: false }).copyText(), 'あ゛', 'OFFなら変換しない');
 });
 
+test('結合文字の濁点・半濁点はプレビューで文字に重ねて表示する', () => {
+  const t = tool();
+  t.render('い゙う゚が{{あ}}');
+  const preview = t.preview();
+  assert.deepEqual(Array.from(preview.querySelectorAll('.dakuten'), (el) => el.textContent), ['い゙', 'あ゙']);
+  assert.deepEqual(Array.from(preview.querySelectorAll('.handakuten'), (el) => el.textContent), ['う゚']);
+  assert.equal(preview.querySelectorAll('.dakuten-mark').length, 3, '濁点そのものは消さずに残す');
+});
+
 test('タイトル・著者名をプレビューの先頭に表示し、変換も適用する', () => {
   const t = tool();
   t.render('本文', { title: '久遠！！', author: '縦書太郎' });
